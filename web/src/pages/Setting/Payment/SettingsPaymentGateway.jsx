@@ -71,6 +71,10 @@ export default function SettingsPaymentGateway(props) {
       showError(t('请先填写服务器地址'));
       return;
     }
+    if (!inputs.Price || Number(inputs.Price) <= 0) {
+      showError(t('支付汇率必须大于 0'));
+      return;
+    }
 
     setLoading(true);
     try {
@@ -162,9 +166,12 @@ export default function SettingsPaymentGateway(props) {
             <Col xs={24} sm={24} md={12} lg={12} xl={12}>
               <Form.InputNumber
                 field='Price'
-                precision={2}
-                label={t('充值价格（x元/美金）')}
-                placeholder={t('例如：7，就是7元/美金')}
+                precision={4}
+                label={t('支付汇率（人民币/美元）')}
+                placeholder={t('例如：7.3，就是 1 美元按 7.3 元人民币支付')}
+                extraText={t(
+                  '用于易支付金额换算，普通充值和订阅套餐都会按此汇率提交给易支付',
+                )}
               />
             </Col>
             <Col xs={24} sm={24} md={12} lg={12} xl={12}>

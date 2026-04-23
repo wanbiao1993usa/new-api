@@ -15,11 +15,23 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
+	"github.com/shopspring/decimal"
 )
 
 type SubscriptionEpayPayRequest struct {
 	PlanId        int    `json:"plan_id"`
 	PaymentMethod string `json:"payment_method"`
+}
+
+func getSubscriptionEpayPayMoney(priceAmount float64) float64 {
+	exchangeRate := operation_setting.Price
+	if exchangeRate <= 0 {
+		exchangeRate = operation_setting.USDExchangeRate
+	}
+	if exchangeRate <= 0 {
+		exchangeRate = 1
+	}
+	return decimal.NewFromFloat(priceAmount).Mul(decimal.NewFromFloat(exchangeRate)).InexactFloat64()
 }
 
 func SubscriptionRequestEpay(c *gin.Context) {
@@ -80,11 +92,16 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		common.ApiErrorMsg(c, "当前管理员未配置支付信息")
 		return
 	}
+	payMoney := getSubscriptionEpayPayMoney(plan.PriceAmount)
+	if payMoney < 0.01 {
+		common.ApiErrorMsg(c, "支付金额过低")
+		return
+	}
 
 	order := &model.SubscriptionOrder{
 		UserId:        userId,
 		PlanId:        plan.Id,
-		Money:         plan.PriceAmount,
+		Money:         payMoney,
 		TradeNo:       tradeNo,
 		PaymentMethod: req.PaymentMethod,
 		CreateTime:    time.Now().Unix(),
@@ -98,7 +115,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("SUB:%s", plan.Title),
-		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
+		Money:          strconv.FormatFloat(payMoney, 'f', 2, 64),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
 		ReturnUrl:      returnUrl,
