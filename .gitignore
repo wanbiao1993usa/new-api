@@ -4,6 +4,8 @@
 .history
 upload
 *.exe
+new-api-local-*/
+new-api-local-*.tar.gz
 *.db
 build
 *.db-journal
