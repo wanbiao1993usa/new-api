@@ -44,6 +44,8 @@ import {
   TrendingUp,
   Receipt,
   Sparkles,
+  ExternalLink,
+  AlertTriangle,
 } from 'lucide-react';
 import { IconGift } from '@douyinfe/semi-icons';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
@@ -51,6 +53,11 @@ import { getCurrencyConfig } from '../../helpers/render';
 import SubscriptionPlansCard from './SubscriptionPlansCard';
 
 const { Text } = Typography;
+
+const unlimitedPlanTaobaoLink =
+  'https://item.taobao.com/item.htm?ft=t&id=1044543995746';
+const redemptionCodeTaobaoLink =
+  'https://item.taobao.com/item.htm?ft=t&id=1046392000506';
 
 const RechargeCard = ({
   t,
@@ -564,6 +571,97 @@ const RechargeCard = ({
           />
         )}
       </Card>
+
+      <div
+        className='w-full rounded-xl border px-4 py-4 shadow-sm'
+        style={{
+          borderColor: '#f97316',
+          background:
+            'linear-gradient(135deg, rgba(255,247,237,0.98) 0%, rgba(254,226,226,0.98) 100%)',
+        }}
+      >
+        <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>
+          <div className='flex items-start gap-3'>
+            <div
+              className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full'
+              style={{ background: '#ea580c', color: '#fff' }}
+            >
+              <Sparkles size={20} />
+            </div>
+            <div className='min-w-0'>
+              <div
+                className='text-base font-semibold'
+                style={{ color: '#9a3412' }}
+              >
+                {t('需要无限流量套餐？')}
+              </div>
+              <div className='text-sm leading-6' style={{ color: '#7c2d12' }}>
+                {t('如果想要使用无限流量的套餐，请在淘宝联系作者。')}
+              </div>
+              <div
+                className='mt-2 flex max-w-full items-start gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm'
+                style={{
+                  borderColor: '#dc2626',
+                  background: '#fee2e2',
+                  color: '#991b1b',
+                }}
+              >
+                <AlertTriangle size={16} className='mt-0.5 shrink-0' />
+                <span>{t('购买后：一个月内无限流量，一个月后清零。')}</span>
+              </div>
+            </div>
+          </div>
+          <a
+            href={unlimitedPlanTaobaoLink}
+            target='_blank'
+            rel='noopener noreferrer'
+            className='inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-red-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 self-start sm:self-auto'
+          >
+            <ExternalLink size={16} className='mr-2' />
+            {t('购买无限流量套餐')}
+          </a>
+        </div>
+      </div>
+
+      <div
+        className='w-full rounded-xl border px-4 py-4 shadow-sm'
+        style={{
+          borderColor: '#2563eb',
+          background:
+            'linear-gradient(135deg, rgba(239,246,255,0.98) 0%, rgba(219,234,254,0.98) 100%)',
+        }}
+      >
+        <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>
+          <div className='flex items-start gap-3'>
+            <div
+              className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full'
+              style={{ background: '#2563eb', color: '#fff' }}
+            >
+              <IconGift />
+            </div>
+            <div className='min-w-0'>
+              <div
+                className='text-base font-semibold'
+                style={{ color: '#1e3a8a' }}
+              >
+                {t('普通兑换码购买')}
+              </div>
+              <div className='text-sm leading-6' style={{ color: '#1e40af' }}>
+                {t('如果只是普通充值，请购买兑换码后在下方输入兑换。')}
+              </div>
+            </div>
+          </div>
+          <a
+            href={redemptionCodeTaobaoLink}
+            target='_blank'
+            rel='noopener noreferrer'
+            className='inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 self-start sm:self-auto'
+          >
+            <ExternalLink size={16} className='mr-2' />
+            {t('购买兑换码')}
+          </a>
+        </div>
+      </div>
 
       {/* 兑换码充值 */}
       <Card
