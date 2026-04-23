@@ -37,6 +37,7 @@ import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
 } from '../../../helpers/subscriptionFormat';
+import PurchaseGuideLink from '../PurchaseGuideLink';
 
 const { Text } = Typography;
 
@@ -245,7 +246,12 @@ const SubscriptionPurchaseModal = ({
           ) : (
             <Banner
               type='info'
-              description={t('管理员未开启在线支付功能，请联系管理员配置。')}
+              description={
+                <span>
+                  {t('管理员未开启在线支付功能，请查看购买教程：')}
+                  <PurchaseGuideLink />
+                </span>
+              }
               className='!rounded-xl'
               closeIcon={null}
             />

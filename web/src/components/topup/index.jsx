@@ -39,6 +39,7 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import PurchaseGuideLink from './PurchaseGuideLink';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -134,6 +135,19 @@ const TopUp = () => {
       : minTopUp;
   };
 
+  const showPaymentGuideError = (message) => {
+    Toast.error({
+      content: (
+        <span>
+          {message}
+          {t('请查看购买教程：')}
+          <PurchaseGuideLink />
+        </span>
+      ),
+      duration: 8,
+    });
+  };
+
   const requestAmountByPayment = async (payment, value) => {
     if (payment === 'stripe') {
       return getStripeAmount(value);
@@ -194,22 +208,22 @@ const TopUp = () => {
   const preTopUp = async (payment) => {
     if (payment === 'stripe') {
       if (!enableStripeTopUp) {
-        showError(t('管理员未开启Stripe充值！'));
+        showPaymentGuideError(t('管理员未开启Stripe充值！'));
         return;
       }
     } else if (payment === 'waffo_pancake') {
       if (!enableWaffoPancakeTopUp) {
-        showError(t('管理员未开启 Waffo Pancake 充值！'));
+        showPaymentGuideError(t('管理员未开启 Waffo Pancake 充值！'));
         return;
       }
     } else if (payment.startsWith('waffo:')) {
       if (!enableWaffoTopUp) {
-        showError(t('管理员未开启 Waffo 充值！'));
+        showPaymentGuideError(t('管理员未开启 Waffo 充值！'));
         return;
       }
     } else {
       if (!enableOnlineTopUp) {
-        showError(t('管理员未开启在线充值！'));
+        showPaymentGuideError(t('管理员未开启在线充值！'));
         return;
       }
     }
@@ -337,7 +351,7 @@ const TopUp = () => {
 
   const creemPreTopUp = async (product) => {
     if (!enableCreemTopUp) {
-      showError(t('管理员未开启 Creem 充值！'));
+      showPaymentGuideError(t('管理员未开启 Creem 充值！'));
       return;
     }
     setSelectedCreemProduct(product);
@@ -647,7 +661,7 @@ const TopUp = () => {
                 ? data.waffo_min_topup
                 : enableWaffoPancakeTopUp
                   ? data.waffo_pancake_min_topup
-                : 1;
+                  : 1;
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
           setEnableCreemTopUp(enableCreemTopUp);

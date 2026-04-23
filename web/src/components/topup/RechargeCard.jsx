@@ -23,7 +23,6 @@ import {
   Typography,
   Card,
   Button,
-  Banner,
   Skeleton,
   Form,
   Space,
@@ -560,16 +559,7 @@ const RechargeCard = ({
               )}
             </div>
           </Form>
-        ) : (
-          <Banner
-            type='info'
-            description={t(
-              '管理员未开启在线充值功能，请联系管理员开启或使用兑换码充值。',
-            )}
-            className='!rounded-xl'
-            closeIcon={null}
-          />
-        )}
+        ) : null}
       </Card>
 
       <div
@@ -648,6 +638,9 @@ const RechargeCard = ({
               </div>
               <div className='text-sm leading-6' style={{ color: '#1e40af' }}>
                 {t('如果只是普通充值，请购买兑换码后在下方输入兑换。')}
+              </div>
+              <div className='text-sm leading-6' style={{ color: '#1e40af' }}>
+                {t('可以享受原价2折、0.8折等优惠渠道。')}
               </div>
             </div>
           </div>
