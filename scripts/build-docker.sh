@@ -2,20 +2,16 @@
 set -euo pipefail
 
 IMAGE="${1:-${IMAGE:-new-api-local:latest}}"
+TARGET_PLATFORM="${PLATFORM:-linux/amd64}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 
-platform_args=()
-if [[ -n "${PLATFORM:-}" ]]; then
-  platform_args=(--platform "$PLATFORM")
-fi
+platform_args=(--platform "$TARGET_PLATFORM")
 
 cd "$ROOT_DIR"
 
 echo "Building Docker image: $IMAGE"
-if [[ ${#platform_args[@]} -gt 0 ]]; then
-  echo "Using platform: $PLATFORM"
-fi
+echo "Using platform: $TARGET_PLATFORM"
 
 docker build "${platform_args[@]}" -t "$IMAGE" .
 
