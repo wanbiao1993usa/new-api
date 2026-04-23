@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 
 export const purchaseGuideLink =
-  'https://doc.sig.ergouzi.life/#/purchase-guide';
+  'https://doc.sig.ergouzi.life/#/subscription-guide';
 
 const PurchaseGuideLink = ({
   className = 'font-medium text-blue-600 underline',
