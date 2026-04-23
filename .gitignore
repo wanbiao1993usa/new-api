@@ -10,6 +10,7 @@ new-api-local-*.tar.gz
 build
 *.db-journal
 logs
+logs-dev/
 web/dist
 .env
 one-api
@@ -28,6 +29,7 @@ plans
 electron/node_modules
 electron/dist
 data/
+data-dev/
 .gomodcache/
 .gocache-temp
 .gopath
