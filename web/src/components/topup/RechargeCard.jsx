@@ -102,6 +102,7 @@ const RechargeCard = ({
   activeSubscriptions = [],
   allSubscriptions = [],
   reloadSubscriptionSelf,
+  initialTab = 'topup',
 }) => {
   const onlineFormApiRef = useRef(null);
   const redeemFormApiRef = useRef(null);
@@ -115,9 +116,15 @@ const RechargeCard = ({
   useEffect(() => {
     if (initialTabSetRef.current) return;
     if (subscriptionLoading) return;
-    setActiveTab(shouldShowSubscription ? 'subscription' : 'topup');
+    setActiveTab(
+      initialTab === 'topup'
+        ? 'topup'
+        : shouldShowSubscription
+          ? 'subscription'
+          : 'topup',
+    );
     initialTabSetRef.current = true;
-  }, [shouldShowSubscription, subscriptionLoading]);
+  }, [shouldShowSubscription, subscriptionLoading, initialTab]);
 
   useEffect(() => {
     if (!shouldShowSubscription && activeTab !== 'topup') {

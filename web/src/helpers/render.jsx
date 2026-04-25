@@ -837,6 +837,32 @@ export function renderRatio(ratio) {
   );
 }
 
+export function formatGroupRatioDiscount(ratio) {
+  const numericRatio = Number(ratio);
+  if (!Number.isFinite(numericRatio)) {
+    return '';
+  }
+  const discount = numericRatio * 10;
+  const display = Number.isInteger(discount)
+    ? discount.toString()
+    : Number(discount.toFixed(2)).toString();
+  return `${display}${i18next.t('折')}`;
+}
+
+export function renderGroupRatioDiscount(ratio) {
+  const label = formatGroupRatioDiscount(ratio);
+  if (!label) return null;
+  let color = 'green';
+  if (Number(ratio) >= 1) {
+    color = 'blue';
+  }
+  return (
+    <Tag size='small' color={color} shape='circle'>
+      {label}
+    </Tag>
+  );
+}
+
 const measureTextWidth = (
   text,
   style = {
@@ -973,7 +999,7 @@ export const renderGroupOption = (item) => {
           {label}
         </Typography.Text>
       </div>
-      {item.ratio && renderRatio(item.ratio)}
+      {item.ratio && renderGroupRatioDiscount(item.ratio)}
     </div>
   );
 };
@@ -1622,10 +1648,9 @@ function renderPriceSimpleCore({
 
 export function renderTaskBillingProcess(other, content) {
   if (other?.task_id != null) {
-    return renderBillingArticle(
-      [content].filter(Boolean),
-      { showReferenceNote: false },
-    );
+    return renderBillingArticle([content].filter(Boolean), {
+      showReferenceNote: false,
+    });
   }
   return renderBillingArticle([
     buildBillingText('任务预扣费（将在任务完成后按实际token重算）'),

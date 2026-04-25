@@ -29,6 +29,39 @@ import { useIsMobile } from './useIsMobile';
 import { useSidebarCollapsed } from './useSidebarCollapsed';
 import { useMinimumLoadingTime } from './useMinimumLoadingTime';
 
+const defaultHeaderNavModules = {
+  home: true,
+  console: true,
+  plans: true,
+  pricing: {
+    enabled: true,
+    requireAuth: false,
+  },
+  docs: true,
+  about: true,
+};
+
+const normalizeHeaderNavModules = (modules) => {
+  const normalized = {
+    ...defaultHeaderNavModules,
+    ...(modules || {}),
+  };
+
+  if (typeof normalized.pricing === 'boolean') {
+    normalized.pricing = {
+      enabled: normalized.pricing,
+      requireAuth: false,
+    };
+  } else {
+    normalized.pricing = {
+      ...defaultHeaderNavModules.pricing,
+      ...(normalized.pricing || {}),
+    };
+  }
+
+  return normalized;
+};
+
 export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
   const { t, i18n } = useTranslation();
   const [userState, userDispatch] = useContext(UserContext);
@@ -37,7 +70,9 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const [logoLoaded, setLogoLoaded] = useState(false);
   const navigate = useNavigate();
-  const [currentLang, setCurrentLang] = useState(normalizeLanguage(i18n.language));
+  const [currentLang, setCurrentLang] = useState(
+    normalizeLanguage(i18n.language),
+  );
   const location = useLocation();
 
   const loading = statusState?.status === undefined;
@@ -61,21 +96,13 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
       try {
         const modules = JSON.parse(headerNavModulesConfig);
 
-        // 处理向后兼容性：如果pricing是boolean，转换为对象格式
-        if (typeof modules.pricing === 'boolean') {
-          modules.pricing = {
-            enabled: modules.pricing,
-            requireAuth: false, // 默认不需要登录鉴权
-          };
-        }
-
-        return modules;
+        return normalizeHeaderNavModules(modules);
       } catch (error) {
         console.error('解析顶栏模块配置失败:', error);
-        return null;
+        return normalizeHeaderNavModules(null);
       }
     }
-    return null;
+    return normalizeHeaderNavModules(null);
   }, [headerNavModulesConfig]);
 
   // 获取模型广场权限配置

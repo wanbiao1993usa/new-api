@@ -18,6 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
+import { Button } from '@douyinfe/semi-ui';
+import { ArrowRight, Sparkles } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import PricingTopSection from '../header/PricingTopSection';
 import PricingView from './PricingView';
 
@@ -28,6 +31,26 @@ const PricingContent = ({ isMobile, sidebarProps, ...props }) => {
     >
       {/* 固定的顶部区域（分类介绍 + 搜索和操作） */}
       <div className='pricing-search-header'>
+        <div className='mb-2 flex flex-col gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100 md:flex-row md:items-center md:justify-between'>
+          <div className='flex min-w-0 items-center gap-2 text-sm font-medium'>
+            <Sparkles size={16} className='shrink-0' />
+            <span className='truncate'>
+              {props.t?.(
+                '下方价格已按分组折扣显示；实际扣费以 API Token 所选分组为准',
+              )}
+            </span>
+          </div>
+          <Link to='/plans' className='shrink-0'>
+            <Button
+              size='small'
+              type='primary'
+              theme='solid'
+              icon={<ArrowRight size={14} />}
+            >
+              {props.t?.('查看计费说明')}
+            </Button>
+          </Link>
+        </div>
         <PricingTopSection
           {...props}
           isMobile={isMobile}

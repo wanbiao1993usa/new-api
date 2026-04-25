@@ -388,6 +388,9 @@ const EditTokenModal = (props) => {
                         field='group'
                         label={t('令牌分组')}
                         placeholder={t('令牌分组，默认为用户的分组')}
+                        extraText={t(
+                          '实际扣费以当前 Token 所选分组计算后的价格为准',
+                        )}
                         optionList={groups}
                         renderOptionItem={renderGroupOption}
                         filter={(input, option) => {
@@ -406,6 +409,9 @@ const EditTokenModal = (props) => {
                         placeholder={t('管理员未设置用户可选分组')}
                         disabled
                         label={t('令牌分组')}
+                        extraText={t(
+                          '实际扣费以当前 Token 所选分组计算后的价格为准',
+                        )}
                         style={{ width: '100%' }}
                       />
                     )}
@@ -552,7 +558,10 @@ const EditTokenModal = (props) => {
                         ? `▾ ${t('收起原生额度输入')}`
                         : `▸ ${t('使用原生额度输入')}`}
                     </div>
-                    <div style={{ display: showQuotaInput ? 'block' : 'none' }} className='mt-2'>
+                    <div
+                      style={{ display: showQuotaInput ? 'block' : 'none' }}
+                      className='mt-2'
+                    >
                       <Form.InputNumber
                         field='remain_quota'
                         label={t('额度')}

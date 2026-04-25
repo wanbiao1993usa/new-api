@@ -33,22 +33,48 @@ import { StatusContext } from '../../../context/Status';
 
 const { Text } = Typography;
 
+const defaultHeaderNavModules = {
+  home: true,
+  console: true,
+  plans: true,
+  pricing: {
+    enabled: true,
+    requireAuth: false,
+  },
+  docs: true,
+  about: true,
+};
+
+const normalizeHeaderNavModules = (modules) => {
+  const normalized = {
+    ...defaultHeaderNavModules,
+    ...(modules || {}),
+  };
+
+  if (typeof normalized.pricing === 'boolean') {
+    normalized.pricing = {
+      enabled: normalized.pricing,
+      requireAuth: false,
+    };
+  } else {
+    normalized.pricing = {
+      ...defaultHeaderNavModules.pricing,
+      ...(normalized.pricing || {}),
+    };
+  }
+
+  return normalized;
+};
+
 export default function SettingsHeaderNavModules(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [statusState, statusDispatch] = useContext(StatusContext);
 
   // 顶栏模块管理状态
-  const [headerNavModules, setHeaderNavModules] = useState({
-    home: true,
-    console: true,
-    pricing: {
-      enabled: true,
-      requireAuth: false, // 默认不需要登录鉴权
-    },
-    docs: true,
-    about: true,
-  });
+  const [headerNavModules, setHeaderNavModules] = useState(
+    defaultHeaderNavModules,
+  );
 
   // 处理顶栏模块配置变更
   function handleHeaderNavModuleChange(moduleKey) {
@@ -79,17 +105,7 @@ export default function SettingsHeaderNavModules(props) {
 
   // 重置顶栏模块为默认配置
   function resetHeaderNavModules() {
-    const defaultModules = {
-      home: true,
-      console: true,
-      pricing: {
-        enabled: true,
-        requireAuth: false,
-      },
-      docs: true,
-      about: true,
-    };
-    setHeaderNavModules(defaultModules);
+    setHeaderNavModules(defaultHeaderNavModules);
     showSuccess(t('已重置为默认配置'));
   }
 
@@ -134,28 +150,10 @@ export default function SettingsHeaderNavModules(props) {
       try {
         const modules = JSON.parse(props.options.HeaderNavModules);
 
-        // 处理向后兼容性：如果pricing是boolean，转换为对象格式
-        if (typeof modules.pricing === 'boolean') {
-          modules.pricing = {
-            enabled: modules.pricing,
-            requireAuth: false, // 默认不需要登录鉴权
-          };
-        }
-
-        setHeaderNavModules(modules);
+        setHeaderNavModules(normalizeHeaderNavModules(modules));
       } catch (error) {
         // 使用默认配置
-        const defaultModules = {
-          home: true,
-          console: true,
-          pricing: {
-            enabled: true,
-            requireAuth: false,
-          },
-          docs: true,
-          about: true,
-        };
-        setHeaderNavModules(defaultModules);
+        setHeaderNavModules(defaultHeaderNavModules);
       }
     }
   }, [props.options]);
@@ -171,6 +169,11 @@ export default function SettingsHeaderNavModules(props) {
       key: 'console',
       title: t('控制台'),
       description: t('用户控制面板，管理账户'),
+    },
+    {
+      key: 'plans',
+      title: t('计费说明'),
+      description: t('Token 分组计费说明'),
     },
     {
       key: 'pricing',

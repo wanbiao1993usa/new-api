@@ -36,6 +36,7 @@ import {
 import {
   timestamp2string,
   renderGroup,
+  renderGroupRatioDiscount,
   renderQuota,
   getModelCategories,
   showError,
@@ -108,11 +109,7 @@ const renderGroupColumn = (text, record, t, groupRatios = {}) => {
   return (
     <span className='flex items-center gap-1'>
       {renderGroup(text)}
-      {ratio !== undefined && (
-        <Tag size='small' color='green' shape='circle'>
-          {ratio}x
-        </Tag>
-      )}
+      {ratio !== undefined && renderGroupRatioDiscount(ratio)}
     </span>
   );
 };
