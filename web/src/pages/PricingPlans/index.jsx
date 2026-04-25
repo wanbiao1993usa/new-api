@@ -20,62 +20,13 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import {
-  Building2,
-  Calculator,
-  Check,
-  Gauge,
-  KeyRound,
-  Layers,
-  ReceiptText,
-  ShieldCheck,
-  WalletCards,
-} from 'lucide-react';
-
-const GROUP_EXAMPLES = [
-  {
-    group: '2折分组',
-    formula: '$100 × 2折',
-    pay: '$20',
-    note: '适合普通按量使用',
-  },
-  {
-    group: '1折分组',
-    formula: '$100 × 1折',
-    pay: '$10',
-    note: '适合更高频调用',
-  },
-  {
-    group: '0.8折分组',
-    formula: '$100 × 0.8折',
-    pay: '$8',
-    note: '以创建 Token 时可选分组为准',
-  },
-];
-
-const EXPLANATIONS = [
-  {
-    icon: WalletCards,
-    title: '充值就是余额',
-    text: '没有额外月费，账户余额可以被不同 API Token 共同使用。',
-  },
-  {
-    icon: Layers,
-    title: 'Token 决定折扣',
-    text: '创建 API Token 时选择分组，之后这个 Token 的请求都按该分组计费。',
-  },
-  {
-    icon: Gauge,
-    title: '模型广场显示折扣后价格',
-    text: '查看价格时看到的就是折扣后的价格，实际扣费以发起请求的 Token 分组为准。',
-  },
-];
+import { Building2, Check, Gauge, KeyRound, ReceiptText } from 'lucide-react';
 
 const FLOW_STEPS = [
   {
     step: '01',
-    title: '先充值余额',
-    text: '充值金额进入账户余额，不会自动变成订阅套餐。',
+    title: '注册账户',
+    text: '新用户注册后会有余额，可以先创建 API Token 开始调用。',
   },
   {
     step: '02',
@@ -252,6 +203,20 @@ const PricingPlans = () => {
           line-height: 1.85;
         }
 
+        .billing-subtitle strong {
+          display: block;
+          color: var(--text);
+          font-size: clamp(22px, 3vw, 32px);
+          line-height: 1.32;
+          letter-spacing: -0.03em;
+          font-weight: 900;
+        }
+
+        .billing-subtitle span {
+          display: block;
+          margin-top: 10px;
+        }
+
         .billing-actions {
           display: flex;
           align-items: center;
@@ -296,114 +261,6 @@ const PricingPlans = () => {
           transform: translateY(-2px);
         }
 
-        .billing-spotlight {
-          display: grid;
-          grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
-          gap: 18px;
-          align-items: stretch;
-          margin-top: 44px;
-          padding: 24px 26px;
-          border-radius: 26px;
-          background:
-            linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--surface-strong)) 0%, color-mix(in srgb, var(--accent-2) 9%, var(--surface)) 100%);
-          border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--surface-border));
-          box-shadow: var(--shadow-strong);
-          backdrop-filter: blur(18px);
-          text-align: left;
-        }
-
-        .billing-spotlight-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 13px;
-          border-radius: 999px;
-          background: color-mix(in srgb, var(--warm) 16%, transparent);
-          color: var(--warm);
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-        }
-
-        .billing-spotlight-badge::before {
-          content: "";
-          width: 7px;
-          height: 7px;
-          border-radius: 999px;
-          background: currentColor;
-        }
-
-        .billing-spotlight-title {
-          margin: 14px 0 0;
-          color: var(--text);
-          font-size: clamp(24px, 3vw, 36px);
-          line-height: 1.12;
-          font-weight: 800;
-          letter-spacing: -0.05em;
-        }
-
-        .billing-spotlight-text {
-          margin: 12px 0 0;
-          color: var(--text-muted);
-          font-size: 15px;
-          line-height: 1.85;
-        }
-
-        .billing-points {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          margin-top: 18px;
-        }
-
-        .billing-point {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 9px 12px;
-          border-radius: 999px;
-          background: color-mix(in srgb, var(--text) 5%, transparent);
-          border: 1px solid var(--surface-border);
-          color: var(--text);
-          font-size: 12px;
-          font-weight: 700;
-        }
-
-        .billing-point svg {
-          color: var(--success);
-        }
-
-        .billing-formula {
-          display: grid;
-          gap: 10px;
-          align-content: center;
-          min-height: 100%;
-          padding: 18px;
-          border-radius: 20px;
-          background: rgba(11, 17, 32, 0.94);
-          color: #dbe4ff;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-        }
-
-        .billing-formula-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 18px;
-          padding: 11px 12px;
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(148, 163, 184, 0.16);
-          font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
-          font-size: 13px;
-        }
-
-        .billing-formula-row strong {
-          color: #ffffff;
-          font-size: 15px;
-        }
-
         .billing-section {
           position: relative;
           padding: 66px 0;
@@ -436,111 +293,6 @@ const PricingPlans = () => {
           color: var(--text-muted);
           font-size: 16px;
           line-height: 1.8;
-        }
-
-        .billing-grid-3 {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 18px;
-        }
-
-        .billing-card {
-          min-height: 100%;
-          padding: 22px;
-          border-radius: 20px;
-          background: var(--surface);
-          border: 1px solid var(--surface-border);
-          box-shadow: var(--shadow-soft);
-          backdrop-filter: blur(16px);
-        }
-
-        .billing-icon {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 44px;
-          height: 44px;
-          margin-bottom: 18px;
-          border-radius: 14px;
-          color: var(--accent-2);
-          background: color-mix(in srgb, var(--accent-2) 12%, transparent);
-          border: 1px solid color-mix(in srgb, var(--accent-2) 18%, transparent);
-        }
-
-        .billing-card h3,
-        .billing-card h4 {
-          margin: 0;
-          color: var(--text);
-          font-weight: 800;
-          letter-spacing: -0.03em;
-        }
-
-        .billing-card h3 {
-          font-size: 21px;
-        }
-
-        .billing-card h4 {
-          font-size: 18px;
-        }
-
-        .billing-card p {
-          margin: 12px 0 0;
-          color: var(--text-muted);
-          font-size: 14px;
-          line-height: 1.75;
-        }
-
-        .billing-example-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 16px;
-        }
-
-        .billing-example {
-          position: relative;
-          overflow: hidden;
-          padding: 22px;
-          border-radius: 20px;
-          background: var(--surface-strong);
-          border: 1px solid var(--surface-border);
-          box-shadow: var(--shadow-soft);
-        }
-
-        .billing-example::after {
-          content: "";
-          position: absolute;
-          inset: 0 0 auto;
-          height: 4px;
-          background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent-3));
-        }
-
-        .billing-example-name {
-          color: var(--text);
-          font-size: 18px;
-          font-weight: 800;
-        }
-
-        .billing-example-formula {
-          margin-top: 18px;
-          color: var(--text-muted);
-          font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
-          font-size: 14px;
-        }
-
-        .billing-example-pay {
-          margin-top: 8px;
-          color: var(--text);
-          font-size: 34px;
-          line-height: 1;
-          letter-spacing: -0.05em;
-          font-weight: 900;
-        }
-
-        .billing-example-note {
-          margin-top: 14px;
-          color: var(--text-muted);
-          font-size: 13px;
-          line-height: 1.7;
         }
 
         .billing-flow {
@@ -684,7 +436,6 @@ const PricingPlans = () => {
         }
 
         @media (max-width: 900px) {
-          .billing-spotlight,
           .billing-flow,
           .billing-enterprise {
             grid-template-columns: 1fr;
@@ -698,10 +449,6 @@ const PricingPlans = () => {
             display: block;
           }
 
-          .billing-grid-3,
-          .billing-example-grid {
-            grid-template-columns: 1fr;
-          }
         }
 
         @media (max-width: 640px) {
@@ -717,9 +464,8 @@ const PricingPlans = () => {
             font-size: 16px;
           }
 
-          .billing-spotlight {
-            padding: 20px;
-            border-radius: 22px;
+          .billing-subtitle strong {
+            font-size: 22px;
           }
 
           .billing-actions {
@@ -747,9 +493,12 @@ const PricingPlans = () => {
               <span className='billing-grad-text'>{t('说明')}</span>
             </h1>
             <p className='billing-subtitle'>
-              {t(
-                '价格只由 API Token 绑定的分组决定。创建 Token 时选哪个分组，之后这个 Token 的请求就按对应折扣扣费。',
-              )}
+              <strong>{t('价格只由 API Token 绑定的分组决定。')}</strong>
+              <span>
+                {t(
+                  '创建 Token 时选哪个分组，之后这个 Token 的请求就按对应折扣扣费。',
+                )}
+              </span>
             </p>
             <div className='billing-actions'>
               <Link className='billing-button-primary' to='/console/token'>
@@ -762,122 +511,17 @@ const PricingPlans = () => {
               </Link>
             </div>
           </div>
-
-          <div className='billing-spotlight'>
-            <div>
-              <div className='billing-spotlight-badge'>{t('核心规则')}</div>
-              <h2 className='billing-spotlight-title'>
-                {t('模型广场显示的是折扣后的价格')}
-              </h2>
-              <p className='billing-spotlight-text'>
-                {t(
-                  '用户不需要自己再换算比例。实际调用时，系统会根据发起请求的 API Token 分组自动扣费。',
-                )}
-              </p>
-              <div className='billing-points'>
-                <span className='billing-point'>
-                  <Check size={15} />
-                  {t('无额外月费')}
-                </span>
-                <span className='billing-point'>
-                  <Check size={15} />
-                  {t('余额通用')}
-                </span>
-                <span className='billing-point'>
-                  <Check size={15} />
-                  {t('所有模型适用')}
-                </span>
-              </div>
-            </div>
-
-            <div className='billing-formula' aria-label={t('计费公式')}>
-              <div className='billing-formula-row'>
-                <span>{t('基础价')}</span>
-                <strong>$100</strong>
-              </div>
-              <div className='billing-formula-row'>
-                <span>{t('Token 分组')}</span>
-                <strong>{t('1折')}</strong>
-              </div>
-              <div className='billing-formula-row'>
-                <span>{t('实际扣费')}</span>
-                <strong>$10</strong>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
       <section className='billing-section billing-section-tight'>
-        <div className='billing-container'>
-          <div className='billing-section-head'>
-            <div>
-              <div className='billing-label'>{t('怎么计算')}</div>
-              <h2 className='billing-section-title'>{t('充值不是套餐')}</h2>
-              <p className='billing-section-subtitle'>
-                {t(
-                  '用户充值后得到的是账户余额，不会因为充值金额自动升级。真正决定价格的是每个 API Token 创建时选择的分组。',
-                )}
-              </p>
-            </div>
-            <ShieldCheck size={38} color='var(--success)' />
-          </div>
-
-          <div className='billing-grid-3'>
-            {EXPLANATIONS.map((item) => {
-              const Icon = item.icon;
-              return (
-                <article className='billing-card' key={item.title}>
-                  <span className='billing-icon'>
-                    <Icon size={22} />
-                  </span>
-                  <h3>{t(item.title)}</h3>
-                  <p>{t(item.text)}</p>
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <section className='billing-section'>
-        <div className='billing-container'>
-          <div className='billing-section-head'>
-            <div>
-              <div className='billing-label'>{t('分组示例')}</div>
-              <h2 className='billing-section-title'>
-                {t('只看折扣，不看订阅')}
-              </h2>
-              <p className='billing-section-subtitle'>
-                {t(
-                  '下面只演示计算方式。实际可选分组和价格，以创建 API Token 页面与模型广场展示为准。',
-                )}
-              </p>
-            </div>
-            <Calculator size={38} color='var(--accent-2)' />
-          </div>
-
-          <div className='billing-example-grid'>
-            {GROUP_EXAMPLES.map((row) => (
-              <article className='billing-example' key={row.group}>
-                <div className='billing-example-name'>{t(row.group)}</div>
-                <div className='billing-example-formula'>{row.formula}</div>
-                <div className='billing-example-pay'>{row.pay}</div>
-                <div className='billing-example-note'>{t(row.note)}</div>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className='billing-section'>
         <div className='billing-container billing-flow'>
           <div>
-            <div className='billing-label'>{t('使用流程')}</div>
+            <div className='billing-label'>{t('怎么计算')}</div>
             <h2 className='billing-section-title'>{t('按 Token 分组扣费')}</h2>
             <p className='billing-section-subtitle'>
               {t(
-                '这套规则避免了“充值后还要再买套餐”的困惑：余额负责支付，Token 分组负责价格。',
+                '新用户注册后会有余额。创建 API Token 时选择分组，之后调用按这个 Token 的分组扣费。',
               )}
             </p>
 

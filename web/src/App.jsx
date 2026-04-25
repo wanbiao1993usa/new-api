@@ -344,6 +344,14 @@ function App() {
           }
         />
         <Route
+          path='/plan'
+          element={
+            <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <Plans />
+            </Suspense>
+          }
+        />
+        <Route
           path='/about'
           element={
             <Suspense fallback={<Loading></Loading>} key={location.pathname}>
