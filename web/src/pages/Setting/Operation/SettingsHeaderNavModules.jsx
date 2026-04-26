@@ -172,8 +172,8 @@ export default function SettingsHeaderNavModules(props) {
     },
     {
       key: 'plans',
-      title: t('计费说明'),
-      description: t('Token 分组计费说明'),
+      title: t('价格方案'),
+      description: t('套餐价格和购买入口'),
     },
     {
       key: 'pricing',

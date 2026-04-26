@@ -20,561 +20,461 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Building2, Check, Gauge, KeyRound, ReceiptText } from 'lucide-react';
+import {
+  ArrowRight,
+  Check,
+  CreditCard,
+  Infinity,
+  MessageCircle,
+  WalletCards,
+} from 'lucide-react';
 
-const FLOW_STEPS = [
+const PLANS = [
   {
-    step: '01',
-    title: '注册账户',
-    text: '新用户注册后会有余额，可以先创建 API Token 开始调用。',
+    key: 'pay-as-you-go',
+    name: '按量付费',
+    subtitle: '按量付费，适合测试、低频使用和临时扩容',
+    price: '$0',
+    priceNote: '无月费',
+    icon: WalletCards,
+    actionText: '立即充值',
+    actionTo: '/console/topup',
+    features: [
+      '先充值后使用',
+      '按 API Token 所选分组计费',
+      '余额不足时停止扣费',
+      '可随时创建多个分组 Token',
+    ],
   },
   {
-    step: '02',
-    title: '创建 API Token',
-    text: '创建时选择对应分组，例如 2折、1折或更低折扣分组。',
+    key: 'unlimited-war',
+    name: '无限战争',
+    subtitle: '全平台不限额度，重度使用优先',
+    price: '$20',
+    priceNote: '每月',
+    icon: Infinity,
+    actionText: '购买套餐',
+    actionTo: '/console/topup?tab=subscription',
+    highlighted: true,
+    features: [
+      '有效期: 1 个月',
+      '额度重置: 4 小时',
+      '每 4 小时总额度: $200.00',
+      '限购 1',
+      '升级分组: 无限战争',
+    ],
   },
   {
-    step: '03',
-    title: '按 Token 自动扣费',
-    text: '哪个 Token 发起请求，就按哪个 Token 的分组价格扣费。',
+    key: 'custom',
+    name: '定制套餐',
+    subtitle: '联系作者进行定制，适合团队和特殊用量场景',
+    price: '定制',
+    priceNote: '按需',
+    icon: MessageCircle,
+    actionText: 'lanmeimatrix@gmail.com',
+    features: [
+      '按业务场景配置额度',
+      '可定制专属分组策略',
+      '支持特殊渠道和模型需求',
+      '适合团队、企业和长期用量',
+    ],
   },
-];
-
-const RULES = [
-  '所有模型都适用，包括 GPT-5.5 和 opus-4-6。',
-  '同一个账户可以创建多个不同分组的 API Token。',
-  '分组以创建 API Token 页面展示为准，后台调整后新建 Token 可选择新的分组。',
-  '企业客户不展示固定套餐，请直接联系人工沟通接入和额度。',
 ];
 
 const PricingPlans = () => {
   const { t } = useTranslation();
 
   return (
-    <div className='billing-static mt-[60px]'>
+    <main className='plans-page mt-[60px]'>
       <style>{`
-        .billing-static {
-          --bg: #f5f7fb;
-          --bg-alt: #eef2f8;
-          --surface: rgba(255, 255, 255, 0.78);
-          --surface-strong: rgba(255, 255, 255, 0.92);
-          --surface-border: rgba(15, 23, 42, 0.08);
-          --text: #101828;
-          --text-muted: #667085;
-          --accent: #0ea5e9;
-          --accent-2: #6366f1;
-          --accent-3: #8b5cf6;
-          --success: #16a34a;
-          --warm: #f59e0b;
-          --shadow-soft: 0 24px 60px rgba(15, 23, 42, 0.08);
-          --shadow-strong: 0 32px 80px rgba(15, 23, 42, 0.12);
-          color: var(--text);
-          background:
-            radial-gradient(circle at 10% 0%, rgba(14, 165, 233, 0.18), transparent 30%),
-            radial-gradient(circle at 90% 8%, rgba(99, 102, 241, 0.14), transparent 28%),
-            linear-gradient(180deg, var(--bg) 0%, var(--bg-alt) 100%);
+        .plans-page {
+          --plans-bg: #f7f8fb;
+          --plans-surface: #ffffff;
+          --plans-surface-muted: #f2f4f7;
+          --plans-border: #e4e7ec;
+          --plans-border-strong: #cfd5df;
+          --plans-text: #101828;
+          --plans-muted: #667085;
+          --plans-primary: #1f6feb;
+          --plans-primary-strong: #175cd3;
+          --plans-success: #16a34a;
+          --plans-shadow: 0 18px 42px rgba(16, 24, 40, 0.08);
+          min-height: calc(100vh - 60px);
+          background: var(--plans-bg);
+          color: var(--plans-text);
           font-family:
-            "Plus Jakarta Sans",
+            "Inter",
             "SF Pro Display",
             "PingFang SC",
             "Hiragino Sans GB",
             "Microsoft YaHei",
             sans-serif;
-          overflow: hidden;
         }
 
-        html.dark .billing-static {
-          --bg: #080910;
-          --bg-alt: #0d1019;
-          --surface: rgba(255, 255, 255, 0.04);
-          --surface-strong: rgba(17, 20, 38, 0.92);
-          --surface-border: rgba(255, 255, 255, 0.08);
-          --text: #e8eaf0;
-          --text-muted: #98a2b3;
-          --accent: #22d3ee;
-          --accent-2: #818cf8;
-          --accent-3: #a78bfa;
-          --success: #4ade80;
-          --warm: #fbbf24;
-          --shadow-soft: 0 24px 60px rgba(0, 0, 0, 0.28);
-          --shadow-strong: 0 40px 90px rgba(0, 0, 0, 0.45);
+        html.dark .plans-page {
+          --plans-bg: #0b0d12;
+          --plans-surface: #111827;
+          --plans-surface-muted: #1f2937;
+          --plans-border: #2f3847;
+          --plans-border-strong: #475467;
+          --plans-text: #f2f4f7;
+          --plans-muted: #98a2b3;
+          --plans-primary: #60a5fa;
+          --plans-primary-strong: #93c5fd;
+          --plans-success: #4ade80;
+          --plans-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
         }
 
-        .billing-static,
-        .billing-static * {
+        .plans-page,
+        .plans-page * {
           box-sizing: border-box;
         }
 
-        .billing-static a {
-          color: inherit;
-          text-decoration: none;
-        }
-
-        .billing-container {
-          width: min(1180px, calc(100% - 48px));
+        .plans-wrap {
+          width: min(1120px, calc(100% - 48px));
           margin: 0 auto;
-          position: relative;
-          z-index: 1;
+          padding: 56px 0 72px;
         }
 
-        .billing-hero {
-          position: relative;
-          padding: 84px 0 54px;
-        }
-
-        .billing-hero::before,
-        .billing-hero::after {
-          content: "";
-          position: absolute;
-          border-radius: 999px;
-          filter: blur(110px);
-          pointer-events: none;
-          z-index: 0;
-        }
-
-        .billing-hero::before {
-          width: 360px;
-          height: 360px;
-          top: 26px;
-          left: -80px;
-          background: radial-gradient(circle, rgba(14, 165, 233, 0.18), transparent 68%);
-        }
-
-        .billing-hero::after {
-          width: 420px;
-          height: 420px;
-          top: 32px;
-          right: -90px;
-          background: radial-gradient(circle, rgba(99, 102, 241, 0.14), transparent 70%);
-        }
-
-        .billing-hero-copy {
-          max-width: 880px;
-          margin: 0 auto;
-          text-align: center;
-        }
-
-        .billing-label {
-          display: inline-flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 18px;
-          padding: 8px 14px;
-          border-radius: 999px;
-          background: color-mix(in srgb, var(--accent) 10%, transparent);
-          border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
-          color: var(--accent);
-          font-size: 12px;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          font-weight: 800;
-        }
-
-        .billing-label::before {
-          content: "";
-          width: 8px;
-          height: 8px;
-          border-radius: 999px;
-          background: currentColor;
-          box-shadow: 0 0 0 6px color-mix(in srgb, currentColor 18%, transparent);
-        }
-
-        .billing-title {
-          margin: 0;
-          color: var(--text);
-          font-size: clamp(42px, 8vw, 88px);
-          line-height: 1.02;
-          letter-spacing: -0.06em;
-          font-weight: 800;
-        }
-
-        .billing-grad-text {
-          background: linear-gradient(135deg, var(--accent), var(--accent-2), var(--accent-3));
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
-        }
-
-        .billing-subtitle {
-          max-width: 760px;
-          margin: 26px auto 0;
-          color: var(--text-muted);
-          font-size: 19px;
-          line-height: 1.85;
-        }
-
-        .billing-subtitle strong {
-          display: block;
-          color: var(--text);
-          font-size: clamp(22px, 3vw, 32px);
-          line-height: 1.32;
-          letter-spacing: -0.03em;
-          font-weight: 900;
-        }
-
-        .billing-subtitle span {
-          display: block;
-          margin-top: 10px;
-        }
-
-        .billing-actions {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 14px;
-          margin-top: 34px;
-          flex-wrap: wrap;
-        }
-
-        .billing-button-primary,
-        .billing-button-secondary {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
-          min-height: 52px;
-          padding: 0 24px;
-          border-radius: 999px;
-          font-size: 15px;
-          font-weight: 800;
-          transition:
-            transform 0.2s ease,
-            box-shadow 0.2s ease,
-            border-color 0.2s ease;
-        }
-
-        .billing-button-primary {
-          color: #ffffff;
-          background: linear-gradient(135deg, var(--accent), var(--accent-2));
-          box-shadow: 0 20px 50px color-mix(in srgb, var(--accent) 28%, transparent);
-        }
-
-        .billing-button-secondary {
-          color: var(--text);
-          background: var(--surface);
-          border: 1px solid var(--surface-border);
-          backdrop-filter: blur(16px);
-        }
-
-        .billing-button-primary:hover,
-        .billing-button-secondary:hover {
-          transform: translateY(-2px);
-        }
-
-        .billing-section {
-          position: relative;
-          padding: 66px 0;
-        }
-
-        .billing-section-tight {
-          padding-top: 36px;
-        }
-
-        .billing-section-head {
-          display: flex;
-          align-items: flex-end;
-          justify-content: space-between;
-          gap: 24px;
-          margin-bottom: 24px;
-        }
-
-        .billing-section-title {
-          margin: 0;
-          color: var(--text);
-          font-size: clamp(30px, 4vw, 48px);
-          line-height: 1.08;
-          letter-spacing: -0.04em;
-          font-weight: 800;
-        }
-
-        .billing-section-subtitle {
-          max-width: 680px;
-          margin: 14px 0 0;
-          color: var(--text-muted);
-          font-size: 16px;
-          line-height: 1.8;
-        }
-
-        .billing-flow {
+        .plans-heading {
           display: grid;
-          grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+          grid-template-columns: minmax(0, 1fr) auto;
           gap: 24px;
-          align-items: start;
+          align-items: end;
+          margin-bottom: 28px;
         }
 
-        .billing-rules {
-          display: grid;
-          gap: 12px;
-          margin-top: 24px;
-        }
-
-        .billing-rule {
+        .plans-kicker {
           display: flex;
-          align-items: flex-start;
-          gap: 10px;
-          color: var(--text);
+          align-items: center;
+          gap: 8px;
+          margin: 0 0 10px;
+          color: var(--plans-primary);
           font-size: 14px;
+          font-weight: 700;
+          letter-spacing: 0;
+        }
+
+        .plans-kicker svg {
+          flex: 0 0 auto;
+        }
+
+        .plans-title {
+          margin: 0;
+          color: var(--plans-text);
+          font-size: clamp(34px, 5vw, 56px);
+          line-height: 1.08;
+          font-weight: 800;
+          letter-spacing: 0;
+        }
+
+        .plans-description {
+          max-width: 720px;
+          margin: 14px 0 0;
+          color: var(--plans-muted);
+          font-size: 16px;
           line-height: 1.75;
         }
 
-        .billing-rule svg {
-          flex: 0 0 auto;
-          margin-top: 4px;
-          color: var(--success);
+        .plans-model-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          min-height: 40px;
+          padding: 0 14px;
+          border-radius: 8px;
+          color: var(--plans-text);
+          background: var(--plans-surface);
+          border: 1px solid var(--plans-border);
+          font-size: 14px;
+          font-weight: 700;
+          text-decoration: none;
+          transition:
+            border-color 0.18s ease,
+            color 0.18s ease,
+            transform 0.18s ease;
         }
 
-        .billing-step {
+        .plans-model-link:hover {
+          color: var(--plans-primary);
+          border-color: var(--plans-primary);
+          transform: translateY(-1px);
+        }
+
+        .plans-grid {
           display: grid;
-          grid-template-columns: auto minmax(0, 1fr);
-          gap: 16px;
-          padding: 18px;
-          border-radius: 18px;
-          background: var(--surface);
-          border: 1px solid var(--surface-border);
-          box-shadow: var(--shadow-soft);
-          backdrop-filter: blur(16px);
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 20px;
+          align-items: stretch;
         }
 
-        .billing-step + .billing-step {
-          margin-top: 14px;
+        .plan-card {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          min-height: 520px;
+          padding: 32px;
+          border-radius: 8px;
+          background: var(--plans-surface);
+          border: 1px solid var(--plans-border);
+          box-shadow: var(--plans-shadow);
         }
 
-        .billing-step-number {
+        .plan-card-highlighted {
+          border-color: var(--plans-border-strong);
+        }
+
+        .plan-badge {
+          position: absolute;
+          top: 18px;
+          right: 18px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 10px;
+          border-radius: 8px;
+          color: var(--plans-primary-strong);
+          background: color-mix(in srgb, var(--plans-primary) 10%, transparent);
+          border: 1px solid color-mix(in srgb, var(--plans-primary) 28%, transparent);
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .plan-icon {
           display: inline-flex;
           align-items: center;
           justify-content: center;
           width: 44px;
           height: 44px;
-          border-radius: 14px;
-          color: #ffffff;
-          background: linear-gradient(135deg, var(--accent), var(--accent-2));
-          font-weight: 900;
+          margin-bottom: 22px;
+          border-radius: 8px;
+          color: var(--plans-primary);
+          background: color-mix(in srgb, var(--plans-primary) 10%, transparent);
         }
 
-        .billing-step h3 {
+        .plan-name {
           margin: 0;
-          color: var(--text);
-          font-size: 18px;
+          color: var(--plans-text);
+          font-size: clamp(28px, 4vw, 36px);
+          line-height: 1.15;
           font-weight: 800;
+          letter-spacing: 0;
         }
 
-        .billing-step p {
-          margin: 8px 0 0;
-          color: var(--text-muted);
-          font-size: 14px;
-          line-height: 1.75;
-        }
-
-        .billing-enterprise {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) auto;
-          gap: 18px;
-          align-items: center;
-          margin-top: 18px;
-          padding: 22px 24px;
-          border-radius: 22px;
-          background:
-            linear-gradient(135deg, color-mix(in srgb, var(--accent-3) 14%, var(--surface-strong)) 0%, color-mix(in srgb, var(--accent) 10%, var(--surface)) 100%);
-          border: 1px solid color-mix(in srgb, var(--accent-3) 28%, var(--surface-border));
-          box-shadow: var(--shadow-strong);
-        }
-
-        .billing-enterprise h3 {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin: 0;
-          color: var(--text);
-          font-size: 22px;
-          font-weight: 800;
-          letter-spacing: -0.03em;
-        }
-
-        .billing-enterprise p {
+        .plan-subtitle {
+          min-height: 58px;
           margin: 10px 0 0;
-          color: var(--text-muted);
-          font-size: 14px;
-          line-height: 1.75;
+          color: var(--plans-muted);
+          font-size: 18px;
+          line-height: 1.55;
         }
 
-        .billing-enterprise-contact {
+        .plan-price-row {
           display: flex;
-          align-items: center;
-          justify-content: flex-end;
-          gap: 12px;
-          flex-wrap: wrap;
+          align-items: baseline;
+          gap: 10px;
+          margin: 42px 0 24px;
         }
 
-        .billing-enterprise-consult,
-        .billing-enterprise-email {
+        .plan-price {
+          color: var(--plans-text);
+          font-size: clamp(42px, 5vw, 60px);
+          line-height: 1;
+          font-weight: 800;
+          letter-spacing: 0;
+        }
+
+        .plan-price-note {
+          color: var(--plans-muted);
+          font-size: 16px;
+          font-weight: 700;
+        }
+
+        .plan-features {
+          display: grid;
+          gap: 12px;
+          margin: 0 0 30px;
+          padding: 0;
+          list-style: none;
+        }
+
+        .plan-feature {
+          display: grid;
+          grid-template-columns: 20px minmax(0, 1fr);
+          gap: 10px;
+          align-items: start;
+          color: var(--plans-text);
+          font-size: 17px;
+          line-height: 1.55;
+        }
+
+        .plan-feature svg {
+          margin-top: 4px;
+          color: var(--plans-success);
+        }
+
+        .plan-action {
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 8px;
-          white-space: nowrap;
-          font-weight: 800;
-        }
-
-        .billing-enterprise-consult {
-          min-height: 52px;
-          padding: 0 22px;
-          border-radius: 999px;
+          width: 100%;
+          min-height: 48px;
+          margin-top: auto;
+          border-radius: 8px;
           color: #ffffff;
-          background: linear-gradient(135deg, var(--accent-3), var(--accent-2));
-          box-shadow: 0 20px 48px color-mix(in srgb, var(--accent-3) 28%, transparent);
+          background: var(--plans-primary);
           font-size: 15px;
+          font-weight: 800;
+          text-decoration: none;
+          transition:
+            background 0.18s ease,
+            transform 0.18s ease;
         }
 
-        .billing-enterprise-email {
-          min-height: 42px;
-          padding: 0 14px;
-          border-radius: 999px;
-          color: var(--text);
-          background: color-mix(in srgb, var(--text) 5%, transparent);
-          border: 1px solid var(--surface-border);
-          font-size: 13px;
+        .plan-action:hover {
+          background: var(--plans-primary-strong);
+          transform: translateY(-1px);
         }
 
-        @media (max-width: 900px) {
-          .billing-flow,
-          .billing-enterprise {
+        .plan-action-static,
+        .plan-action-static:hover {
+          cursor: default;
+          background: var(--plans-primary);
+          transform: none;
+        }
+
+        .plans-note {
+          margin: 20px 0 0;
+          padding: 16px 18px;
+          border-radius: 8px;
+          color: var(--plans-muted);
+          background: var(--plans-surface);
+          border: 1px solid var(--plans-border);
+          font-size: 14px;
+          line-height: 1.7;
+        }
+
+        @media (max-width: 860px) {
+          .plans-heading {
+            grid-template-columns: 1fr;
+            align-items: start;
+          }
+
+          .plans-grid {
             grid-template-columns: 1fr;
           }
 
-          .billing-enterprise-contact {
-            justify-content: flex-start;
+          .plan-card {
+            min-height: auto;
           }
-
-          .billing-section-head {
-            display: block;
-          }
-
         }
 
         @media (max-width: 640px) {
-          .billing-container {
-            width: min(100% - 32px, 1180px);
+          .plans-wrap {
+            width: min(100% - 28px, 1120px);
+            padding: 36px 0 48px;
           }
 
-          .billing-hero {
-            padding: 62px 0 42px;
+          .plan-card {
+            padding: 24px;
           }
 
-          .billing-subtitle {
+          .plan-subtitle {
+            min-height: 0;
             font-size: 16px;
           }
 
-          .billing-subtitle strong {
-            font-size: 22px;
+          .plan-price-row {
+            margin: 30px 0 22px;
           }
 
-          .billing-actions {
-            align-items: stretch;
-            flex-direction: column;
-          }
-
-          .billing-button-primary,
-          .billing-button-secondary {
-            width: 100%;
-          }
-
-          .billing-section {
-            padding: 46px 0;
+          .plan-feature {
+            font-size: 16px;
           }
         }
       `}</style>
 
-      <section className='billing-hero'>
-        <div className='billing-container'>
-          <div className='billing-hero-copy'>
-            <div className='billing-label'>{t('按 Token 分组计费')}</div>
-            <h1 className='billing-title'>
-              {t('计费')}
-              <span className='billing-grad-text'>{t('说明')}</span>
-            </h1>
-            <p className='billing-subtitle'>
-              <strong>{t('价格只由 API Token 绑定的分组决定。')}</strong>
-              <span>
-                {t(
-                  '创建 Token 时选哪个分组，之后这个 Token 的请求就按对应折扣扣费。',
-                )}
-              </span>
-            </p>
-            <div className='billing-actions'>
-              <Link className='billing-button-primary' to='/console/token'>
-                <KeyRound size={18} />
-                {t('创建 API Token')}
-              </Link>
-              <Link className='billing-button-secondary' to='/pricing'>
-                <Gauge size={18} />
-                {t('查看价格')}
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className='billing-section billing-section-tight'>
-        <div className='billing-container billing-flow'>
+      <div className='plans-wrap'>
+        <header className='plans-heading'>
           <div>
-            <div className='billing-label'>{t('怎么计算')}</div>
-            <h2 className='billing-section-title'>{t('按 Token 分组扣费')}</h2>
-            <p className='billing-section-subtitle'>
+            <p className='plans-kicker'>
+              <CreditCard size={16} />
+              {t('价格方案')}
+            </p>
+            <h1 className='plans-title'>{t('选择适合你的价格方案')}</h1>
+            <p className='plans-description'>
               {t(
-                '新用户注册后会有余额。创建 API Token 时选择分组，之后调用按这个 Token 的分组扣费。',
+                '低频调用可以按量付费；重度使用可以选择无限战争套餐，按固定周期获得更高额度。',
               )}
             </p>
-
-            <div className='billing-rules'>
-              {RULES.map((rule) => (
-                <div className='billing-rule' key={rule}>
-                  <Check size={17} />
-                  <span>{t(rule)}</span>
-                </div>
-              ))}
-            </div>
           </div>
+          <Link className='plans-model-link' to='/pricing'>
+            {t('查看模型价格')}
+            <ArrowRight size={16} />
+          </Link>
+        </header>
 
-          <div>
-            {FLOW_STEPS.map((item) => (
-              <article className='billing-step' key={item.step}>
-                <span className='billing-step-number'>{item.step}</span>
-                <div>
-                  <h3>{t(item.title)}</h3>
-                  <p>{t(item.text)}</p>
+        <section className='plans-grid' aria-label={t('价格方案')}>
+          {PLANS.map((plan) => {
+            const Icon = plan.icon;
+            return (
+              <article
+                className={`plan-card ${
+                  plan.highlighted ? 'plan-card-highlighted' : ''
+                }`}
+                key={plan.key}
+              >
+                {plan.highlighted && (
+                  <div className='plan-badge'>
+                    <Check size={13} />
+                    {t('重度推荐')}
+                  </div>
+                )}
+
+                <div className='plan-icon'>
+                  <Icon size={24} />
                 </div>
+                <h2 className='plan-name'>{t(plan.name)}</h2>
+                <p className='plan-subtitle'>{t(plan.subtitle)}</p>
+
+                <div className='plan-price-row'>
+                  <span className='plan-price'>{plan.price}</span>
+                  <span className='plan-price-note'>{t(plan.priceNote)}</span>
+                </div>
+
+                <ul className='plan-features'>
+                  {plan.features.map((feature) => (
+                    <li className='plan-feature' key={feature}>
+                      <Check size={17} />
+                      <span>{t(feature)}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                {plan.actionTo ? (
+                  <Link className='plan-action' to={plan.actionTo}>
+                    {t(plan.actionText)}
+                    <ArrowRight size={16} />
+                  </Link>
+                ) : (
+                  <span className='plan-action plan-action-static'>
+                    {t(plan.actionText)}
+                  </span>
+                )}
               </article>
-            ))}
+            );
+          })}
+        </section>
 
-            <div className='billing-enterprise'>
-              <div>
-                <h3>
-                  <Building2 size={22} />
-                  {t('企业客户')}
-                </h3>
-                <p>
-                  {t(
-                    '企业用量、专属通道、发票或采购流程不做固定价格表，请通过联系方式人工沟通。',
-                  )}
-                </p>
-              </div>
-              <div className='billing-enterprise-contact'>
-                <span className='billing-enterprise-consult'>
-                  <ReceiptText size={18} />
-                  {t('企业服务咨询')}
-                </span>
-                <a
-                  className='billing-enterprise-email'
-                  href='mailto:lanmeimatrix@gmail.com'
-                >
-                  lanmeimatrix@gmail.com
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
+        <p className='plans-note'>
+          {t(
+            '实际扣费以 API Token 所选分组、模型价格和订阅扣费策略为准。套餐购买入口会展示当前可购买的实时套餐配置。',
+          )}
+        </p>
+      </div>
+    </main>
   );
 };
 

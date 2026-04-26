@@ -49,7 +49,7 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         to: '/console',
       },
       {
-        text: t('计费说明'),
+        text: t('价格方案'),
         itemKey: 'plans',
         to: '/plans',
       },

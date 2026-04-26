@@ -47,7 +47,7 @@ const PricingContent = ({ isMobile, sidebarProps, ...props }) => {
               theme='solid'
               icon={<ArrowRight size={14} />}
             >
-              {props.t?.('查看计费说明')}
+              {props.t?.('查看价格方案')}
             </Button>
           </Link>
         </div>
