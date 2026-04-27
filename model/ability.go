@@ -3,10 +3,12 @@ package model
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/samber/lo"
 	"gorm.io/gorm"
@@ -103,21 +105,110 @@ func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
 	return channelQuery, nil
 }
 
+func getResponsesCompactFallbackAbilities(group string, model string, retry int) ([]Ability, error) {
+	if !ratio_setting.IsCompactModelName(model) {
+		return nil, nil
+	}
+	baseModel := ratio_setting.TrimCompactModelSuffix(model)
+	if baseModel == model {
+		return nil, nil
+	}
+
+	var abilities []Ability
+	err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, baseModel, true).Find(&abilities).Error
+	if err != nil || len(abilities) == 0 {
+		return nil, err
+	}
+
+	channelIDs := make([]int, 0, len(abilities))
+	seenChannelIDs := make(map[int]struct{}, len(abilities))
+	for _, ability := range abilities {
+		if _, ok := seenChannelIDs[ability.ChannelId]; ok {
+			continue
+		}
+		seenChannelIDs[ability.ChannelId] = struct{}{}
+		channelIDs = append(channelIDs, ability.ChannelId)
+	}
+
+	var channels []Channel
+	if err = DB.Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
+		return nil, err
+	}
+	supportedChannels := make(map[int]struct{}, len(channels))
+	for _, channel := range channels {
+		if channel.Status == common.ChannelStatusEnabled && channelSupportsResponsesCompact(channel.Type) {
+			supportedChannels[channel.Id] = struct{}{}
+		}
+	}
+
+	priorities := make(map[int]struct{})
+	filtered := make([]Ability, 0, len(abilities))
+	for _, ability := range abilities {
+		if _, ok := supportedChannels[ability.ChannelId]; !ok {
+			continue
+		}
+		filtered = append(filtered, ability)
+		if ability.Priority != nil {
+			priorities[int(*ability.Priority)] = struct{}{}
+		} else {
+			priorities[0] = struct{}{}
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, nil
+	}
+
+	sortedPriorities := make([]int, 0, len(priorities))
+	for priority := range priorities {
+		sortedPriorities = append(sortedPriorities, priority)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(sortedPriorities)))
+	if retry >= len(sortedPriorities) {
+		retry = len(sortedPriorities) - 1
+	}
+	targetPriority := int64(sortedPriorities[retry])
+
+	targetAbilities := make([]Ability, 0, len(filtered))
+	for _, ability := range filtered {
+		priority := int64(0)
+		if ability.Priority != nil {
+			priority = *ability.Priority
+		}
+		if priority == targetPriority {
+			targetAbilities = append(targetAbilities, ability)
+		}
+	}
+	return targetAbilities, nil
+}
+
 func GetChannel(group string, model string, retry int) (*Channel, error) {
 	var abilities []Ability
 
 	var err error = nil
 	channelQuery, err := getChannelQuery(group, model, retry)
 	if err != nil {
-		return nil, err
-	}
-	if common.UsingSQLite || common.UsingPostgreSQL {
-		err = channelQuery.Order("weight DESC").Find(&abilities).Error
+		abilities, fallbackErr := getResponsesCompactFallbackAbilities(group, model, retry)
+		if fallbackErr != nil {
+			return nil, fallbackErr
+		}
+		if len(abilities) == 0 {
+			return nil, err
+		}
 	} else {
-		err = channelQuery.Order("weight DESC").Find(&abilities).Error
+		if common.UsingSQLite || common.UsingPostgreSQL {
+			err = channelQuery.Order("weight DESC").Find(&abilities).Error
+		} else {
+			err = channelQuery.Order("weight DESC").Find(&abilities).Error
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
-	if err != nil {
-		return nil, err
+	if len(abilities) == 0 {
+		abilities, err = getResponsesCompactFallbackAbilities(group, model, retry)
+		if err != nil {
+			return nil, err
+		}
 	}
 	channel := Channel{}
 	if len(abilities) > 0 {

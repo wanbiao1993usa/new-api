@@ -27,6 +27,22 @@ type ModelRequest struct {
 	Group string `json:"group,omitempty"`
 }
 
+func isModelAllowedByTokenLimit(modelName string, tokenModelLimit map[string]bool) bool {
+	matchName := ratio_setting.FormatMatchingModelName(modelName) // match gpts & thinking-*
+	if tokenModelLimit[matchName] {
+		return true
+	}
+	if !ratio_setting.IsCompactModelName(modelName) {
+		return false
+	}
+	baseModelName := ratio_setting.TrimCompactModelSuffix(modelName)
+	baseMatchName := ratio_setting.FormatMatchingModelName(baseModelName)
+	if baseMatchName == matchName {
+		return false
+	}
+	return tokenModelLimit[baseMatchName]
+}
+
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
@@ -67,8 +83,7 @@ func Distribute() func(c *gin.Context) {
 				if !ok {
 					tokenModelLimit = map[string]bool{}
 				}
-				matchName := ratio_setting.FormatMatchingModelName(modelRequest.Model) // match gpts & thinking-*
-				if _, ok := tokenModelLimit[matchName]; !ok {
+				if !isModelAllowedByTokenLimit(modelRequest.Model, tokenModelLimit) {
 					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
 					return
 				}

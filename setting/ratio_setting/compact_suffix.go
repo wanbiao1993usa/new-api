@@ -11,3 +11,11 @@ func WithCompactModelSuffix(modelName string) string {
 	}
 	return modelName + CompactModelSuffix
 }
+
+func IsCompactModelName(modelName string) bool {
+	return strings.HasSuffix(modelName, CompactModelSuffix)
+}
+
+func TrimCompactModelSuffix(modelName string) string {
+	return strings.TrimSuffix(modelName, CompactModelSuffix)
+}
