@@ -150,29 +150,48 @@ const Dashboard = () => {
     initChart();
   }, []);
 
+  useEffect(() => {
+    if (!dashboardData.isMobile && dashboardData.searchModalVisible) {
+      dashboardData.handleCloseModal();
+    }
+  }, [
+    dashboardData.isMobile,
+    dashboardData.searchModalVisible,
+    dashboardData.handleCloseModal,
+  ]);
+
   return (
     <div className='h-full'>
       <DashboardHeader
         getGreeting={dashboardData.getGreeting}
         greetingVisible={dashboardData.greetingVisible}
         showSearchModal={dashboardData.showSearchModal}
+        handleSearchConfirm={handleSearchConfirm}
         refresh={handleRefresh}
         loading={dashboardData.loading}
-        t={dashboardData.t}
-      />
-
-      <SearchModal
-        searchModalVisible={dashboardData.searchModalVisible}
-        handleSearchConfirm={handleSearchConfirm}
-        handleCloseModal={dashboardData.handleCloseModal}
-        isMobile={dashboardData.isMobile}
         isAdminUser={dashboardData.isAdminUser}
         inputs={dashboardData.inputs}
         dataExportDefaultTime={dashboardData.dataExportDefaultTime}
         timeOptions={dashboardData.timeOptions}
         handleInputChange={dashboardData.handleInputChange}
+        isMobile={dashboardData.isMobile}
         t={dashboardData.t}
       />
+
+      {dashboardData.isMobile && (
+        <SearchModal
+          searchModalVisible={dashboardData.searchModalVisible}
+          handleSearchConfirm={handleSearchConfirm}
+          handleCloseModal={dashboardData.handleCloseModal}
+          isMobile={dashboardData.isMobile}
+          isAdminUser={dashboardData.isAdminUser}
+          inputs={dashboardData.inputs}
+          dataExportDefaultTime={dashboardData.dataExportDefaultTime}
+          timeOptions={dashboardData.timeOptions}
+          handleInputChange={dashboardData.handleInputChange}
+          t={dashboardData.t}
+        />
+      )}
 
       <StatsCards
         groupedStatsData={groupedStatsData}
