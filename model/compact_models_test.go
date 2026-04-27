@@ -89,6 +89,29 @@ func TestIsChannelEnabledForGroupModelDBAllowsCompactAliasFromBaseModel(t *testi
 	require.False(t, IsChannelEnabledForGroupModel("default", compactModelName, unsupported.Id))
 }
 
+func TestEnabledModelListsExpandCompactAliasesFromBaseAbilityRows(t *testing.T) {
+	truncateTables(t)
+
+	priority := int64(10)
+	supported := insertCompactFallbackChannel(t, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled)
+	unsupported := insertCompactFallbackChannel(t, constant.ChannelTypeOpenRouter, common.ChannelStatusEnabled)
+	insertCompactFallbackAbility(t, supported.Id, &priority)
+	insertCompactFallbackAbility(t, unsupported.Id, &priority)
+
+	compactModelName := ratio_setting.WithCompactModelSuffix("gpt-5.5")
+	require.ElementsMatch(t, []string{"gpt-5.5", compactModelName}, GetGroupEnabledModels("default"))
+	require.ElementsMatch(t, []string{"gpt-5.5", compactModelName}, GetEnabledModels())
+
+	abilities, err := GetAllEnableAbilityWithChannels()
+	require.NoError(t, err)
+	modelsByChannel := make(map[int][]string)
+	for _, ability := range abilities {
+		modelsByChannel[ability.ChannelId] = append(modelsByChannel[ability.ChannelId], ability.Model)
+	}
+	require.ElementsMatch(t, []string{"gpt-5.5", compactModelName}, modelsByChannel[supported.Id])
+	require.ElementsMatch(t, []string{"gpt-5.5"}, modelsByChannel[unsupported.Id])
+}
+
 func insertCompactFallbackChannel(t *testing.T, channelType int, status int) Channel {
 	t.Helper()
 	channel := Channel{

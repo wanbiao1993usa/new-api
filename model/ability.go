@@ -37,27 +37,78 @@ func GetAllEnableAbilityWithChannels() ([]AbilityWithChannel, error) {
 		Joins("left join channels on abilities.channel_id = channels.id").
 		Where("abilities.enabled = ?", true).
 		Scan(&abilities).Error
-	return abilities, err
+	if err != nil {
+		return nil, err
+	}
+	return expandAbilityWithChannelsForResponsesCompact(abilities), nil
 }
 
 func GetGroupEnabledModels(group string) []string {
-	var models []string
-	// Find distinct models
-	DB.Table("abilities").Where(commonGroupCol+" = ? and enabled = ?", group, true).Distinct("model").Pluck("model", &models)
-	return models
+	var abilities []AbilityWithChannel
+	err := DB.Table("abilities").
+		Select("abilities.*, channels.type as channel_type").
+		Joins("left join channels on abilities.channel_id = channels.id").
+		Where("abilities."+commonGroupCol+" = ? and abilities.enabled = ?", group, true).
+		Scan(&abilities).Error
+	if err != nil {
+		return []string{}
+	}
+	return distinctAbilityModels(expandAbilityWithChannelsForResponsesCompact(abilities))
 }
 
 func GetEnabledModels() []string {
-	var models []string
-	// Find distinct models
-	DB.Table("abilities").Where("enabled = ?", true).Distinct("model").Pluck("model", &models)
-	return models
+	abilities, err := GetAllEnableAbilityWithChannels()
+	if err != nil {
+		return []string{}
+	}
+	return distinctAbilityModels(abilities)
 }
 
 func GetAllEnableAbilities() []Ability {
-	var abilities []Ability
-	DB.Find(&abilities, "enabled = ?", true)
+	abilitiesWithChannels, err := GetAllEnableAbilityWithChannels()
+	if err != nil {
+		return []Ability{}
+	}
+	abilities := make([]Ability, 0, len(abilitiesWithChannels))
+	for _, ability := range abilitiesWithChannels {
+		abilities = append(abilities, ability.Ability)
+	}
 	return abilities
+}
+
+func expandAbilityWithChannelsForResponsesCompact(abilities []AbilityWithChannel) []AbilityWithChannel {
+	expanded := make([]AbilityWithChannel, 0, len(abilities)*2)
+	seen := make(map[string]struct{}, len(abilities)*2)
+	appendAbility := func(ability AbilityWithChannel) {
+		key := fmt.Sprintf("%s|%s|%d", ability.Group, ability.Model, ability.ChannelId)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		expanded = append(expanded, ability)
+	}
+	for _, ability := range abilities {
+		appendAbility(ability)
+		if channelSupportsResponsesCompact(ability.ChannelType) && shouldExposeResponsesCompactModel(ability.Model) {
+			compactAbility := ability
+			compactAbility.Model = ratio_setting.WithCompactModelSuffix(ability.Model)
+			appendAbility(compactAbility)
+		}
+	}
+	return expanded
+}
+
+func distinctAbilityModels(abilities []AbilityWithChannel) []string {
+	models := make([]string, 0, len(abilities))
+	seen := make(map[string]struct{}, len(abilities))
+	for _, ability := range abilities {
+		if _, ok := seen[ability.Model]; ok {
+			continue
+		}
+		seen[ability.Model] = struct{}{}
+		models = append(models, ability.Model)
+	}
+	return models
 }
 
 func getPriority(group string, model string, retry int) (int, error) {

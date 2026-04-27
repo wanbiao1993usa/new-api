@@ -1,10 +1,22 @@
 package common
 
-import "github.com/QuantumNous/new-api/constant"
+import (
+	"strings"
+
+	"github.com/QuantumNous/new-api/constant"
+)
+
+const openAICompactModelSuffix = "-openai-compact"
 
 // GetEndpointTypesByChannelType 获取渠道最优先端点类型（所有的渠道都支持 OpenAI 端点）
 func GetEndpointTypesByChannelType(channelType int, modelName string) []constant.EndpointType {
 	var endpointTypes []constant.EndpointType
+	if strings.HasSuffix(modelName, openAICompactModelSuffix) {
+		apiType, _ := ChannelType2APIType(channelType)
+		if apiType == constant.APITypeOpenAI || apiType == constant.APITypeCodex {
+			return []constant.EndpointType{constant.EndpointTypeOpenAIResponseCompact}
+		}
+	}
 	switch channelType {
 	case constant.ChannelTypeJina:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeJinaRerank}
