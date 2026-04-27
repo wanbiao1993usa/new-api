@@ -10,10 +10,36 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestModelPriceHelperUsesBasePriceForCompactAlias(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	savedModelPrice := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedModelPrice))
+	})
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"gpt-5.5":5}`))
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("group", "default")
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: ratio_setting.WithCompactModelSuffix("gpt-5.5"),
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	priceData, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	require.True(t, priceData.UsePrice)
+	require.Equal(t, 5.0, priceData.ModelPrice)
+}
 
 func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 	gin.SetMode(gin.TestMode)

@@ -18,4 +18,8 @@ func TestCompactModelSuffixHelpers(t *testing.T) {
 	if TrimCompactModelSuffix(compactModelName) != modelName {
 		t.Fatal("expected compact suffix to be trimmed")
 	}
+	baseModelName, ok := CompactBaseModelName(compactModelName)
+	if !ok || baseModelName != modelName {
+		t.Fatalf("expected compact base model %q, got %q ok=%v", modelName, baseModelName, ok)
+	}
 }

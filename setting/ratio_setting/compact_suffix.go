@@ -19,3 +19,14 @@ func IsCompactModelName(modelName string) bool {
 func TrimCompactModelSuffix(modelName string) string {
 	return strings.TrimSuffix(modelName, CompactModelSuffix)
 }
+
+func CompactBaseModelName(modelName string) (string, bool) {
+	if !IsCompactModelName(modelName) {
+		return "", false
+	}
+	baseModelName := TrimCompactModelSuffix(modelName)
+	if baseModelName == modelName {
+		return "", false
+	}
+	return baseModelName, true
+}

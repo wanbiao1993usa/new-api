@@ -371,15 +371,14 @@ func GetModelPrice(name string, printErr bool) (float64, bool) {
 		return price, true
 	}
 
-	if strings.HasSuffix(name, CompactModelSuffix) {
-		price, ok := modelPriceMap.Get(CompactWildcardModelKey)
-		if !ok {
-			if printErr {
-				common.SysError("model price not found: " + name)
-			}
-			return -1, false
+	if baseName, ok := compactBaseMatchingModelName(name); ok {
+		if price, ok := modelPriceMap.Get(CompactWildcardModelKey); ok {
+			return price, true
 		}
-		return price, true
+		if price, ok := modelPriceMap.Get(baseName); ok {
+			return price, true
+		}
+		name = baseName
 	}
 
 	if printErr {
@@ -405,11 +404,14 @@ func GetModelRatio(name string) (float64, bool, string) {
 
 	ratio, ok := modelRatioMap.Get(name)
 	if !ok {
-		if strings.HasSuffix(name, CompactModelSuffix) {
+		if baseName, isCompact := compactBaseMatchingModelName(name); isCompact {
 			if wildcardRatio, ok := modelRatioMap.Get(CompactWildcardModelKey); ok {
 				return wildcardRatio, true, name
 			}
-			//return 0, true, name
+			if baseRatio, ok := modelRatioMap.Get(baseName); ok {
+				return baseRatio, true, baseName
+			}
+			name = baseName
 		}
 		return 37.5, operation_setting.SelfUseModeEnabled, name
 	}
@@ -432,6 +434,18 @@ func GetDefaultModelPriceMap() map[string]float64 {
 	return defaultModelPrice
 }
 
+func GetDefaultModelPrice(name string) (float64, bool) {
+	name = FormatMatchingModelName(name)
+	if price, ok := defaultModelPrice[name]; ok {
+		return price, true
+	}
+	if baseName, ok := compactBaseMatchingModelName(name); ok {
+		price, ok := defaultModelPrice[baseName]
+		return price, ok
+	}
+	return -1, false
+}
+
 func CompletionRatio2JSONString() string {
 	return completionRatioMap.MarshalJSONString()
 }
@@ -442,10 +456,16 @@ func UpdateCompletionRatioByJSONString(jsonStr string) error {
 
 func GetCompletionRatio(name string) float64 {
 	name = FormatMatchingModelName(name)
+	baseName, hasCompactBase := compactBaseMatchingModelName(name)
 
 	if strings.Contains(name, "/") {
 		if ratio, ok := completionRatioMap.Get(name); ok {
 			return ratio
+		}
+		if hasCompactBase {
+			if ratio, ok := completionRatioMap.Get(baseName); ok {
+				return ratio
+			}
 		}
 	}
 	hardCodedRatio, contain := getHardcodedCompletionModelRatio(name)
@@ -454,6 +474,11 @@ func GetCompletionRatio(name string) float64 {
 	}
 	if ratio, ok := completionRatioMap.Get(name); ok {
 		return ratio
+	}
+	if hasCompactBase {
+		if ratio, ok := completionRatioMap.Get(baseName); ok {
+			return ratio
+		}
 	}
 	return hardCodedRatio
 }
@@ -465,12 +490,21 @@ type CompletionRatioInfo struct {
 
 func GetCompletionRatioInfo(name string) CompletionRatioInfo {
 	name = FormatMatchingModelName(name)
+	baseName, hasCompactBase := compactBaseMatchingModelName(name)
 
 	if strings.Contains(name, "/") {
 		if ratio, ok := completionRatioMap.Get(name); ok {
 			return CompletionRatioInfo{
 				Ratio:  ratio,
 				Locked: false,
+			}
+		}
+		if hasCompactBase {
+			if ratio, ok := completionRatioMap.Get(baseName); ok {
+				return CompletionRatioInfo{
+					Ratio:  ratio,
+					Locked: false,
+				}
 			}
 		}
 	}
@@ -487,6 +521,14 @@ func GetCompletionRatioInfo(name string) CompletionRatioInfo {
 		return CompletionRatioInfo{
 			Ratio:  ratio,
 			Locked: false,
+		}
+	}
+	if hasCompactBase {
+		if ratio, ok := completionRatioMap.Get(baseName); ok {
+			return CompletionRatioInfo{
+				Ratio:  ratio,
+				Locked: false,
+			}
 		}
 	}
 
@@ -631,6 +673,11 @@ func GetAudioRatio(name string) float64 {
 	if ratio, ok := audioRatioMap.Get(name); ok {
 		return ratio
 	}
+	if baseName, ok := compactBaseMatchingModelName(name); ok {
+		if ratio, ok := audioRatioMap.Get(baseName); ok {
+			return ratio
+		}
+	}
 	return 1
 }
 
@@ -639,19 +686,36 @@ func GetAudioCompletionRatio(name string) float64 {
 	if ratio, ok := audioCompletionRatioMap.Get(name); ok {
 		return ratio
 	}
+	if baseName, ok := compactBaseMatchingModelName(name); ok {
+		if ratio, ok := audioCompletionRatioMap.Get(baseName); ok {
+			return ratio
+		}
+	}
 	return 1
 }
 
 func ContainsAudioRatio(name string) bool {
 	name = FormatMatchingModelName(name)
-	_, ok := audioRatioMap.Get(name)
-	return ok
+	if _, ok := audioRatioMap.Get(name); ok {
+		return true
+	}
+	if baseName, ok := compactBaseMatchingModelName(name); ok {
+		_, ok = audioRatioMap.Get(baseName)
+		return ok
+	}
+	return false
 }
 
 func ContainsAudioCompletionRatio(name string) bool {
 	name = FormatMatchingModelName(name)
-	_, ok := audioCompletionRatioMap.Get(name)
-	return ok
+	if _, ok := audioCompletionRatioMap.Get(name); ok {
+		return true
+	}
+	if baseName, ok := compactBaseMatchingModelName(name); ok {
+		_, ok = audioCompletionRatioMap.Get(baseName)
+		return ok
+	}
+	return false
 }
 
 func ModelRatio2JSONString() string {
@@ -675,6 +739,11 @@ func UpdateImageRatioByJSONString(jsonStr string) error {
 
 func GetImageRatio(name string) (float64, bool) {
 	ratio, ok := imageRatioMap.Get(name)
+	if !ok {
+		if baseName, hasCompactBase := compactBaseMatchingModelName(name); hasCompactBase {
+			ratio, ok = imageRatioMap.Get(baseName)
+		}
+	}
 	if !ok {
 		return 1, false // Default to 1 if not found
 	}
@@ -739,6 +808,14 @@ func FormatMatchingModelName(name string) string {
 		name = "gpt-4o-gizmo-*"
 	}
 	return name
+}
+
+func compactBaseMatchingModelName(name string) (string, bool) {
+	baseName, ok := CompactBaseModelName(name)
+	if !ok {
+		return "", false
+	}
+	return FormatMatchingModelName(baseName), true
 }
 
 // result: 倍率or价格， usePrice， exist
