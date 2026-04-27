@@ -35,3 +35,5 @@ data-dev/
 .gopath
 
 token_estimator_test.go
+.test
+skills-lock.json
