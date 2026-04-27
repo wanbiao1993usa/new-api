@@ -110,6 +110,11 @@ func TestEnabledModelListsExpandCompactAliasesFromBaseAbilityRows(t *testing.T) 
 	}
 	require.ElementsMatch(t, []string{"gpt-5.5", compactModelName}, modelsByChannel[supported.Id])
 	require.ElementsMatch(t, []string{"gpt-5.5"}, modelsByChannel[unsupported.Id])
+
+	dbAbilities := GetAllEnableAbilities()
+	for _, ability := range dbAbilities {
+		require.NotEqual(t, compactModelName, ability.Model)
+	}
 }
 
 func insertCompactFallbackChannel(t *testing.T, channelType int, status int) Channel {

@@ -65,22 +65,25 @@ func GetEnabledModels() []string {
 }
 
 func GetAllEnableAbilities() []Ability {
-	abilitiesWithChannels, err := GetAllEnableAbilityWithChannels()
-	if err != nil {
-		return []Ability{}
-	}
-	abilities := make([]Ability, 0, len(abilitiesWithChannels))
-	for _, ability := range abilitiesWithChannels {
-		abilities = append(abilities, ability.Ability)
-	}
+	var abilities []Ability
+	DB.Find(&abilities, "enabled = ?", true)
 	return abilities
 }
 
 func expandAbilityWithChannelsForResponsesCompact(abilities []AbilityWithChannel) []AbilityWithChannel {
+	type abilityKey struct {
+		group     string
+		model     string
+		channelID int
+	}
 	expanded := make([]AbilityWithChannel, 0, len(abilities)*2)
-	seen := make(map[string]struct{}, len(abilities)*2)
+	seen := make(map[abilityKey]struct{}, len(abilities)*2)
 	appendAbility := func(ability AbilityWithChannel) {
-		key := fmt.Sprintf("%s|%s|%d", ability.Group, ability.Model, ability.ChannelId)
+		key := abilityKey{
+			group:     ability.Group,
+			model:     ability.Model,
+			channelID: ability.ChannelId,
+		}
 		if _, ok := seen[key]; ok {
 			return
 		}
