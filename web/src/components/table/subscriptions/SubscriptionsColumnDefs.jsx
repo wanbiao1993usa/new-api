@@ -97,7 +97,7 @@ function renderModelAmountLimits(text, record, t) {
             }}
           >
             <Text ellipsis={{ showTooltip: true }}>
-              {modelName === '*' ? t('默认模型') : modelName}
+              {modelName === '*' ? t('其他模型') : modelName}
             </Text>
             <Tooltip content={`${t('原生额度')}：${amount}`}>
               <Text>{renderQuota(Number(amount || 0))}</Text>

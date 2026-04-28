@@ -232,7 +232,7 @@ const AddEditSubscriptionModal = ({
 
   const getModelLimitOptions = (currentModel) => {
     const options = [
-      { label: t('默认模型 (*)'), value: MODEL_LIMIT_DEFAULT_KEY },
+      { label: t('其他模型 (*)'), value: MODEL_LIMIT_DEFAULT_KEY },
       ...modelOptions,
     ];
     const model = String(currentModel || '').trim();
@@ -764,7 +764,7 @@ const AddEditSubscriptionModal = ({
                         autosize={{ minRows: 4, maxRows: 10 }}
                         onChange={handleModelLimitJsonChange}
                         extraText={t(
-                          '键为平台模型名，值为原生额度；* 表示默认模型限额。留空表示不启用模型限额。',
+                          '键为平台模型名，值为原生额度；* 表示未单独配置的其他模型共享限额。留空表示不启用模型限额。',
                         )}
                         rules={[
                           {

@@ -557,7 +557,7 @@ const SubscriptionPlansCard = ({
                                     limit > 0 ? Math.max(0, limit - used) : 0;
                                   const label =
                                     modelName === '*'
-                                      ? t('默认模型')
+                                      ? t('其他模型')
                                       : modelName;
                                   const remainingPercent =
                                     limit > 0
@@ -645,7 +645,7 @@ const SubscriptionPlansCard = ({
                   ? visibleModelLimits
                       .map(([modelName, amount]) => {
                         const label =
-                          modelName === '*' ? t('默认模型') : modelName;
+                          modelName === '*' ? t('其他模型') : modelName;
                         return `${label}: ${renderQuota(Number(amount || 0))}`;
                       })
                       .join('\n')

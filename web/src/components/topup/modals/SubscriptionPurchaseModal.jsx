@@ -176,7 +176,7 @@ const SubscriptionPurchaseModal = ({
                         className='flex justify-between items-center text-xs'
                       >
                         <Text type='tertiary'>
-                          {modelName === '*' ? t('默认模型') : modelName}
+                          {modelName === '*' ? t('其他模型') : modelName}
                         </Text>
                         <Tooltip content={`${t('原生额度')}：${amount}`}>
                           <Text>{renderQuota(Number(amount || 0))}</Text>
