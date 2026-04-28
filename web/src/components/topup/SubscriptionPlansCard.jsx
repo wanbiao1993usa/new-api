@@ -54,6 +54,23 @@ function getVisibleModelLimits(planDTO) {
   return Object.entries(limits);
 }
 
+function getSubscriptionModelLimitEntries(subscriptionSummary) {
+  const limits = subscriptionSummary?.model_amount_limits;
+  if (!limits || typeof limits !== 'object') return [];
+  const usages = subscriptionSummary?.model_amount_limit_usages || {};
+  return Object.entries(limits)
+    .sort(([a], [b]) => {
+      if (a === '*') return -1;
+      if (b === '*') return 1;
+      return a.localeCompare(b);
+    })
+    .map(([modelName, limit]) => ({
+      modelName,
+      limit: Number(limit || 0),
+      used: Number(usages?.[modelName] || 0),
+    }));
+}
+
 // 提交易支付表单
 function submitEpayForm({ url, params }) {
   const form = document.createElement('form');
@@ -402,6 +419,8 @@ const SubscriptionPlansCard = ({
                     const isCancelled = subscription?.status === 'cancelled';
                     const isActive =
                       subscription?.status === 'active' && !isExpired;
+                    const modelLimitEntries =
+                      getSubscriptionModelLimitEntries(sub);
 
                     return (
                       <div key={subscription?.id || subIndex}>
@@ -477,6 +496,46 @@ const SubscriptionPlansCard = ({
                             </span>
                           )}
                         </div>
+                        {modelLimitEntries.length > 0 && (
+                          <div className='text-xs text-gray-500 mb-2 space-y-1'>
+                            <div>{t('模型用量')}:</div>
+                            {modelLimitEntries.map(
+                              ({ modelName, limit, used }) => {
+                                const remain =
+                                  limit > 0 ? Math.max(0, limit - used) : 0;
+                                const label =
+                                  modelName === '*' ? t('默认模型') : modelName;
+                                const percent =
+                                  limit > 0
+                                    ? Math.min(
+                                        100,
+                                        Math.round((used / limit) * 100),
+                                      )
+                                    : 0;
+                                return (
+                                  <Tooltip
+                                    key={modelName}
+                                    content={`${t('原生额度')}：${used}/${limit} · ${t('剩余')} ${remain}`}
+                                  >
+                                    <div className='flex items-center justify-between gap-3'>
+                                      <span className='truncate'>{label}</span>
+                                      <span className='shrink-0'>
+                                        {renderQuota(used)}/
+                                        {renderQuota(limit)} · {t('剩余')}{' '}
+                                        {renderQuota(remain)}
+                                        {limit > 0 && (
+                                          <span className='ml-1'>
+                                            {percent}%
+                                          </span>
+                                        )}
+                                      </span>
+                                    </div>
+                                  </Tooltip>
+                                );
+                              },
+                            )}
+                          </div>
+                        )}
                         {!isLast && <Divider margin={12} />}
                       </div>
                     );

@@ -370,7 +370,11 @@ func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 }
 
 type SubscriptionSummary struct {
-	Subscription *UserSubscription `json:"subscription"`
+	Subscription           *UserSubscription `json:"subscription"`
+	Plan                   *SubscriptionPlan `json:"plan,omitempty"`
+	ModelAmountLimits      map[string]int64  `json:"model_amount_limits,omitempty"`
+	ModelAmountUsages      map[string]int64  `json:"model_amount_usages,omitempty"`
+	ModelAmountLimitUsages map[string]int64  `json:"model_amount_limit_usages,omitempty"`
 }
 
 func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
@@ -844,14 +848,120 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	if len(subs) == 0 {
 		return []SubscriptionSummary{}
 	}
+	planIds := make([]int, 0, len(subs))
+	subIds := make([]int, 0, len(subs))
+	seenPlans := make(map[int]struct{})
+	for _, sub := range subs {
+		subIds = append(subIds, sub.Id)
+		if sub.PlanId <= 0 {
+			continue
+		}
+		if _, ok := seenPlans[sub.PlanId]; ok {
+			continue
+		}
+		seenPlans[sub.PlanId] = struct{}{}
+		planIds = append(planIds, sub.PlanId)
+	}
+
+	planMap := make(map[int]SubscriptionPlan)
+	if len(planIds) > 0 {
+		var plans []SubscriptionPlan
+		if err := DB.Where("id IN ?", planIds).Find(&plans).Error; err == nil {
+			for _, plan := range plans {
+				planMap[plan.Id] = plan
+			}
+		}
+	}
+
+	modelUsageMap := make(map[int]map[string]int64)
+	if len(subIds) > 0 {
+		var usages []UserSubscriptionModelUsage
+		if err := DB.Where("user_subscription_id IN ?", subIds).Find(&usages).Error; err == nil {
+			for _, usage := range usages {
+				if strings.TrimSpace(usage.ModelName) == "" {
+					continue
+				}
+				if _, ok := modelUsageMap[usage.UserSubscriptionId]; !ok {
+					modelUsageMap[usage.UserSubscriptionId] = make(map[string]int64)
+				}
+				modelUsageMap[usage.UserSubscriptionId][usage.ModelName] += usage.AmountUsed
+			}
+		}
+	}
+
 	result := make([]SubscriptionSummary, 0, len(subs))
 	for _, sub := range subs {
 		subCopy := sub
-		result = append(result, SubscriptionSummary{
+		summary := SubscriptionSummary{
 			Subscription: &subCopy,
-		})
+		}
+		if plan, ok := planMap[sub.PlanId]; ok {
+			planCopy := plan
+			summary.Plan = &planCopy
+			if limits, err := planCopy.GetModelAmountLimitsMap(); err == nil && len(limits) > 0 {
+				summary.ModelAmountLimits = limits
+				summary.ModelAmountLimitUsages = buildSubscriptionModelLimitUsages(limits, modelUsageMap[sub.Id])
+			}
+		}
+		if usages := modelUsageMap[sub.Id]; len(usages) > 0 {
+			summary.ModelAmountUsages = usages
+		}
+		result = append(result, summary)
 	}
 	return result
+}
+
+func buildSubscriptionModelLimitUsages(limits map[string]int64, usages map[string]int64) map[string]int64 {
+	if len(limits) == 0 {
+		return nil
+	}
+	result := make(map[string]int64, len(limits))
+	for limitKey := range limits {
+		result[limitKey] = 0
+	}
+	for modelName, used := range usages {
+		if used == 0 {
+			continue
+		}
+		if limitKey := matchSubscriptionModelLimitKey(limits, modelName); limitKey != "" {
+			result[limitKey] += used
+		}
+	}
+	return result
+}
+
+func matchSubscriptionModelLimitKey(limits map[string]int64, modelName string) string {
+	if len(limits) == 0 {
+		return ""
+	}
+	modelName = strings.TrimSpace(modelName)
+	candidates := []string{modelName}
+	if formatted := ratio_setting.FormatMatchingModelName(modelName); formatted != "" && formatted != modelName {
+		candidates = append(candidates, formatted)
+	}
+	if base, ok := ratio_setting.CompactBaseModelName(modelName); ok {
+		base = ratio_setting.FormatMatchingModelName(base)
+		if base != "" {
+			candidates = append(candidates, base)
+		}
+	}
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		if _, ok := limits[candidate]; ok {
+			return candidate
+		}
+	}
+	if _, ok := limits["*"]; ok {
+		return "*"
+	}
+	return ""
 }
 
 // AdminInvalidateUserSubscription marks a user subscription as cancelled and ends it immediately.

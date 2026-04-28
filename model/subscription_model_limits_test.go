@@ -225,6 +225,37 @@ func TestResetDueSubscriptions_ClearsModelUsage(t *testing.T) {
 	assert.EqualValues(t, 0, getSubscriptionModelLimitUsed(t, 705, "gpt-test"))
 }
 
+func TestGetAllUserSubscriptionsIncludesModelLimitUsageSummary(t *testing.T) {
+	truncateTables(t)
+
+	insertSubscriptionLimitUser(t, 509)
+	insertSubscriptionLimitPlan(t, 609, 0, `{"gpt-test":5000,"*":1000}`, SubscriptionResetNever)
+	insertActiveUserSubscriptionForLimitTest(t, 709, 509, 609, 0, 800)
+	require.NoError(t, DB.Create(&UserSubscriptionModelUsage{
+		UserSubscriptionId: 709,
+		UserId:             509,
+		ModelName:          "gpt-test",
+		AmountUsed:         500,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscriptionModelUsage{
+		UserSubscriptionId: 709,
+		UserId:             509,
+		ModelName:          "other-model",
+		AmountUsed:         300,
+	}).Error)
+
+	summaries, err := GetAllUserSubscriptions(509)
+	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	require.NotNil(t, summaries[0].Plan)
+	assert.EqualValues(t, 5000, summaries[0].ModelAmountLimits["gpt-test"])
+	assert.EqualValues(t, 1000, summaries[0].ModelAmountLimits["*"])
+	assert.EqualValues(t, 500, summaries[0].ModelAmountUsages["gpt-test"])
+	assert.EqualValues(t, 300, summaries[0].ModelAmountUsages["other-model"])
+	assert.EqualValues(t, 500, summaries[0].ModelAmountLimitUsages["gpt-test"])
+	assert.EqualValues(t, 300, summaries[0].ModelAmountLimitUsages["*"])
+}
+
 func TestSubscriptionLifecycle_OverlappingUpgradeSubscriptionsDowngradeAfterLastExpires(t *testing.T) {
 	truncateTables(t)
 
