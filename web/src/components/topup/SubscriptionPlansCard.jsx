@@ -102,6 +102,7 @@ const SubscriptionPlansCard = ({
   enableStripeTopUp = false,
   enableCreemTopUp = false,
   billingPreference,
+  forcedBillingPreference = '',
   onChangeBillingPreference,
   activeSubscriptions = [],
   allSubscriptions = [],
@@ -225,16 +226,27 @@ const SubscriptionPlansCard = ({
   // 当前订阅信息 - 支持多个订阅
   const hasActiveSubscription = activeSubscriptions.length > 0;
   const hasAnySubscription = allSubscriptions.length > 0;
+  const isForcedBillingPreference =
+    forcedBillingPreference === 'subscription_only' ||
+    forcedBillingPreference === 'wallet_only';
+  const effectiveBillingPreference = isForcedBillingPreference
+    ? forcedBillingPreference
+    : billingPreference;
   const disableSubscriptionPreference = !hasActiveSubscription;
   const isSubscriptionPreference =
-    billingPreference === 'subscription_first' ||
-    billingPreference === 'subscription_only';
-  const displayBillingPreference =
-    disableSubscriptionPreference && isSubscriptionPreference
+    effectiveBillingPreference === 'subscription_first' ||
+    effectiveBillingPreference === 'subscription_only';
+  const displayBillingPreference = isForcedBillingPreference
+    ? forcedBillingPreference
+    : disableSubscriptionPreference && isSubscriptionPreference
       ? 'wallet_first'
       : billingPreference;
   const subscriptionPreferenceLabel =
     billingPreference === 'subscription_only' ? t('仅用订阅') : t('优先订阅');
+  const forcedBillingPreferenceLabel =
+    forcedBillingPreference === 'subscription_only'
+      ? t('仅用订阅')
+      : t('仅用钱包');
 
   const planPurchaseCountMap = useMemo(() => {
     const map = new Map();
@@ -357,30 +369,36 @@ const SubscriptionPlansCard = ({
                 )}
               </div>
               <div className='flex items-center gap-2 self-start sm:self-auto'>
-                <Select
-                  value={displayBillingPreference}
-                  onChange={onChangeBillingPreference}
-                  size='small'
-                  style={{ minWidth: 122 }}
-                  optionList={[
-                    {
-                      value: 'subscription_first',
-                      label: disableSubscriptionPreference
-                        ? `${t('优先订阅')} (${t('无生效')})`
-                        : t('优先订阅'),
-                      disabled: disableSubscriptionPreference,
-                    },
-                    { value: 'wallet_first', label: t('优先钱包') },
-                    {
-                      value: 'subscription_only',
-                      label: disableSubscriptionPreference
-                        ? `${t('仅用订阅')} (${t('无生效')})`
-                        : t('仅用订阅'),
-                      disabled: disableSubscriptionPreference,
-                    },
-                    { value: 'wallet_only', label: t('仅用钱包') },
-                  ]}
-                />
+                {isForcedBillingPreference ? (
+                  <span className='inline-flex h-8 items-center rounded-full border border-gray-100 bg-gray-50 px-3 text-sm font-medium text-gray-700'>
+                    {forcedBillingPreferenceLabel}
+                  </span>
+                ) : (
+                  <Select
+                    value={displayBillingPreference}
+                    onChange={onChangeBillingPreference}
+                    size='small'
+                    style={{ minWidth: 122 }}
+                    optionList={[
+                      {
+                        value: 'subscription_first',
+                        label: disableSubscriptionPreference
+                          ? `${t('优先订阅')} (${t('无生效')})`
+                          : t('优先订阅'),
+                        disabled: disableSubscriptionPreference,
+                      },
+                      { value: 'wallet_first', label: t('优先钱包') },
+                      {
+                        value: 'subscription_only',
+                        label: disableSubscriptionPreference
+                          ? `${t('仅用订阅')} (${t('无生效')})`
+                          : t('仅用订阅'),
+                        disabled: disableSubscriptionPreference,
+                      },
+                      { value: 'wallet_only', label: t('仅用钱包') },
+                    ]}
+                  />
+                )}
                 <Button
                   size='small'
                   theme='light'

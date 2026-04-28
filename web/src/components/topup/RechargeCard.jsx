@@ -98,6 +98,7 @@ const RechargeCard = ({
   subscriptionLoading = false,
   subscriptionPlans = [],
   billingPreference,
+  forcedBillingPreference,
   onChangeBillingPreference,
   activeSubscriptions = [],
   allSubscriptions = [],
@@ -763,6 +764,7 @@ const RechargeCard = ({
                 enableStripeTopUp={enableStripeTopUp}
                 enableCreemTopUp={enableCreemTopUp}
                 billingPreference={billingPreference}
+                forcedBillingPreference={forcedBillingPreference}
                 onChangeBillingPreference={onChangeBillingPreference}
                 activeSubscriptions={activeSubscriptions}
                 allSubscriptions={allSubscriptions}

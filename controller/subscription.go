@@ -95,6 +95,15 @@ func GetSubscriptionSelf(c *gin.Context) {
 	userId := c.GetInt("id")
 	settingMap, _ := model.GetUserSetting(userId, false)
 	pref := common.NormalizeBillingPreference(settingMap.BillingPreference)
+	userGroup, _ := model.GetUserGroup(userId, false)
+	groupBillingType := ratio_setting.GetGroupBillingType(userGroup)
+	forcedBillingPreference := ""
+	switch groupBillingType {
+	case ratio_setting.GroupBillingTypeSubscriptionOnly:
+		forcedBillingPreference = "subscription_only"
+	case ratio_setting.GroupBillingTypeWalletOnly:
+		forcedBillingPreference = "wallet_only"
+	}
 
 	// Get all subscriptions (including expired)
 	allSubscriptions, err := model.GetAllUserSubscriptions(userId)
@@ -109,9 +118,12 @@ func GetSubscriptionSelf(c *gin.Context) {
 	}
 
 	common.ApiSuccess(c, gin.H{
-		"billing_preference": pref,
-		"subscriptions":      activeSubscriptions, // all active subscriptions
-		"all_subscriptions":  allSubscriptions,    // all subscriptions including expired
+		"billing_preference":           pref,
+		"effective_group":              userGroup,
+		"effective_group_billing_type": groupBillingType,
+		"forced_billing_preference":    forcedBillingPreference,
+		"subscriptions":                activeSubscriptions, // all active subscriptions
+		"all_subscriptions":            allSubscriptions,    // all subscriptions including expired
 	})
 }
 

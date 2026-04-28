@@ -102,6 +102,7 @@ const TopUp = () => {
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const [billingPreference, setBillingPreference] =
     useState('subscription_first');
+  const [forcedBillingPreference, setForcedBillingPreference] = useState('');
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
   const initialTab =
@@ -553,6 +554,9 @@ const TopUp = () => {
         setBillingPreference(
           res.data.data?.billing_preference || 'subscription_first',
         );
+        setForcedBillingPreference(
+          res.data.data?.forced_billing_preference || '',
+        );
         // Active subscriptions
         const activeSubs = res.data.data?.subscriptions || [];
         setActiveSubscriptions(activeSubs);
@@ -998,6 +1002,7 @@ const TopUp = () => {
           subscriptionLoading={subscriptionLoading}
           subscriptionPlans={subscriptionPlans}
           billingPreference={billingPreference}
+          forcedBillingPreference={forcedBillingPreference}
           onChangeBillingPreference={updateBillingPreference}
           activeSubscriptions={activeSubscriptions}
           allSubscriptions={allSubscriptions}
