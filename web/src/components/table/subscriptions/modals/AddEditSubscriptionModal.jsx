@@ -20,30 +20,37 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useState, useRef } from 'react';
 import {
   Avatar,
+  Banner,
   Button,
   Card,
   Col,
   Form,
+  InputNumber,
   Row,
   Select,
   SideSheet,
   Space,
   Spin,
   Tag,
+  Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
 import {
   IconCalendarClock,
+  IconAlertTriangle,
   IconClose,
   IconCreditCard,
+  IconDelete,
+  IconPlus,
   IconSave,
 } from '@douyinfe/semi-icons';
 import { Clock, RefreshCw } from 'lucide-react';
-import { API, showError, showSuccess } from '../../../../helpers';
+import { API, renderQuota, showError, showSuccess } from '../../../../helpers';
 import {
   quotaToDisplayAmount,
   displayAmountToQuota,
 } from '../../../../helpers/quota';
+import { selectFilter } from '../../../../helpers/utils';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
 const { Text, Title } = Typography;
@@ -64,6 +71,52 @@ const resetPeriodOptions = [
   { value: 'custom', label: '自定义(秒)' },
 ];
 
+function formatJSONSafe(value) {
+  if (!value || !String(value).trim()) return '';
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+}
+
+const MODEL_LIMIT_DEFAULT_KEY = '*';
+
+function createModelLimitRow(model = '', amount = 0) {
+  return {
+    id: `${Date.now()}-${Math.random()}`,
+    model,
+    amount: Number(amount || 0),
+  };
+}
+
+function parseModelLimitRows(value) {
+  if (!value || !String(value).trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    return Object.entries(parsed).map(([model, amount]) =>
+      createModelLimitRow(model, Number(amount || 0)),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function serializeModelLimitRows(rows) {
+  const limits = {};
+  rows.forEach((row) => {
+    const model = String(row.model || '').trim();
+    const amount = Number(row.amount || 0);
+    if (!model || !Number.isFinite(amount) || amount < 0) return;
+    limits[model] = Math.trunc(amount);
+  });
+  if (Object.keys(limits).length === 0) return '';
+  return JSON.stringify(limits, null, 2);
+}
+
 const AddEditSubscriptionModal = ({
   visible,
   handleClose,
@@ -75,8 +128,12 @@ const AddEditSubscriptionModal = ({
   const [loading, setLoading] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
   const [groupLoading, setGroupLoading] = useState(false);
+  const [modelOptions, setModelOptions] = useState([]);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [modelLimitRows, setModelLimitRows] = useState([]);
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
+  const modelLimitSyncRef = useRef(false);
   const isEdit = editingPlan?.plan?.id !== undefined;
   const formKey = isEdit ? `edit-${editingPlan?.plan?.id}` : 'create';
 
@@ -94,6 +151,7 @@ const AddEditSubscriptionModal = ({
     sort_order: 0,
     max_purchase_per_user: 0,
     total_amount: 0,
+    model_amount_limits: '',
     upgrade_group: '',
     stripe_price_id: '',
     creem_product_id: '',
@@ -120,6 +178,7 @@ const AddEditSubscriptionModal = ({
       total_amount: Number(
         quotaToDisplayAmount(p.total_amount || 0).toFixed(2),
       ),
+      model_amount_limits: formatJSONSafe(p.model_amount_limits),
       upgrade_group: p.upgrade_group || '',
       stripe_price_id: p.stripe_price_id || '',
       creem_product_id: p.creem_product_id || '',
@@ -140,6 +199,85 @@ const AddEditSubscriptionModal = ({
       .catch(() => setGroupOptions([]))
       .finally(() => setGroupLoading(false));
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const raw = editingPlan?.plan?.model_amount_limits || '';
+    setModelLimitRows(parseModelLimitRows(formatJSONSafe(raw)) || []);
+  }, [visible, editingPlan?.plan?.id, editingPlan?.plan?.model_amount_limits]);
+
+  useEffect(() => {
+    if (!visible) return;
+    setModelLoading(true);
+    API.get('/api/models/?page_size=1000')
+      .then((res) => {
+        if (!res.data?.success) {
+          setModelOptions([]);
+          return;
+        }
+        const items = res.data?.data?.items || res.data?.data || [];
+        const options = (Array.isArray(items) ? items : [])
+          .map((item) => String(item?.model_name || '').trim())
+          .filter(Boolean)
+          .filter((model, index, list) => list.indexOf(model) === index)
+          .map((model) => ({ label: model, value: model }));
+        setModelOptions(options);
+      })
+      .catch(() => {
+        setModelOptions([]);
+        showError(t('加载模型列表失败'));
+      })
+      .finally(() => setModelLoading(false));
+  }, [visible, t]);
+
+  const getModelLimitOptions = (currentModel) => {
+    const options = [
+      { label: t('默认模型 (*)'), value: MODEL_LIMIT_DEFAULT_KEY },
+      ...modelOptions,
+    ];
+    const model = String(currentModel || '').trim();
+    if (model && !options.some((item) => item.value === model)) {
+      options.push({ label: model, value: model });
+    }
+    return options;
+  };
+
+  const syncModelLimitRows = (rows) => {
+    setModelLimitRows(rows);
+    modelLimitSyncRef.current = true;
+    formApiRef.current?.setValue(
+      'model_amount_limits',
+      serializeModelLimitRows(rows),
+    );
+    setTimeout(() => {
+      modelLimitSyncRef.current = false;
+    }, 0);
+  };
+
+  const addModelLimitRow = () => {
+    syncModelLimitRows([...modelLimitRows, createModelLimitRow('', 0)]);
+  };
+
+  const updateModelLimitRow = (rowId, patch) => {
+    const nextRows = modelLimitRows.map((row) =>
+      row.id === rowId ? { ...row, ...patch } : row,
+    );
+    syncModelLimitRows(nextRows);
+  };
+
+  const removeModelLimitRow = (rowId) => {
+    syncModelLimitRows(modelLimitRows.filter((row) => row.id !== rowId));
+  };
+
+  const handleModelLimitJsonChange = (value) => {
+    if (modelLimitSyncRef.current) return;
+    const parsedRows = parseModelLimitRows(value);
+    if (parsedRows) {
+      setModelLimitRows(parsedRows);
+    } else if (!value || String(value).trim() === '') {
+      setModelLimitRows([]);
+    }
+  };
 
   const submit = async (values) => {
     if (!values.title || values.title.trim() === '') {
@@ -163,6 +301,7 @@ const AddEditSubscriptionModal = ({
           sort_order: Number(values.sort_order || 0),
           max_purchase_per_user: Number(values.max_purchase_per_user || 0),
           total_amount: displayAmountToQuota(values.total_amount),
+          model_amount_limits: values.model_amount_limits || '',
           upgrade_group: values.upgrade_group || '',
         },
       };
@@ -497,6 +636,161 @@ const AddEditSubscriptionModal = ({
                           disabled
                         />
                       )}
+                    </Col>
+                  </Row>
+                </Card>
+
+                {/* 模型限额 */}
+                <Card className='!rounded-2xl shadow-sm border-0 mb-4'>
+                  <div className='flex items-center mb-2'>
+                    <Avatar
+                      size='small'
+                      color='cyan'
+                      className='mr-2 shadow-md'
+                    >
+                      <IconCreditCard size={16} />
+                    </Avatar>
+                    <div>
+                      <Text className='text-lg font-medium'>
+                        {t('模型限额')}
+                      </Text>
+                      <div className='text-xs text-gray-600'>
+                        {t('按模型限制订阅周期内可消耗额度')}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Banner
+                    type='info'
+                    closeIcon={null}
+                    icon={
+                      <IconAlertTriangle
+                        size='large'
+                        style={{ color: 'var(--semi-color-info)' }}
+                      />
+                    }
+                    className='!rounded-xl mb-3'
+                    description={t(
+                      '模型限额按运行时套餐配置生效，修改后会影响该套餐下仍在生效的订阅；用户不可用的模型不会在购买页展示。',
+                    )}
+                  />
+
+                  <Row gutter={12}>
+                    <Col span={24}>
+                      <div className='mb-3'>
+                        <div className='flex items-center justify-between mb-2'>
+                          <Text strong>{t('限额规则')}</Text>
+                          <Button
+                            size='small'
+                            type='primary'
+                            theme='light'
+                            icon={<IconPlus />}
+                            onClick={addModelLimitRow}
+                          >
+                            {t('添加模型')}
+                          </Button>
+                        </div>
+
+                        {modelLimitRows.length === 0 ? (
+                          <div className='rounded-lg border border-dashed border-gray-200 px-3 py-3 text-sm text-gray-500'>
+                            {t('未配置模型限额')}
+                          </div>
+                        ) : (
+                          <div className='flex flex-col gap-2'>
+                            {modelLimitRows.map((row) => (
+                              <div
+                                key={row.id}
+                                className='grid grid-cols-1 sm:grid-cols-[1fr_160px_36px] gap-2 sm:items-center'
+                              >
+                                <Select
+                                  size='small'
+                                  value={row.model || undefined}
+                                  optionList={getModelLimitOptions(row.model)}
+                                  filter={selectFilter}
+                                  allowCreate
+                                  loading={modelLoading}
+                                  placeholder={t('选择或输入模型')}
+                                  style={{ width: '100%' }}
+                                  onChange={(value) =>
+                                    updateModelLimitRow(row.id, {
+                                      model: value || '',
+                                    })
+                                  }
+                                />
+                                <div>
+                                  <Tooltip
+                                    content={`${t('展示额度')}：${renderQuota(
+                                      Number(row.amount || 0),
+                                    )}`}
+                                  >
+                                    <InputNumber
+                                      size='small'
+                                      value={row.amount}
+                                      min={0}
+                                      precision={0}
+                                      style={{ width: '100%' }}
+                                      onChange={(value) =>
+                                        updateModelLimitRow(row.id, {
+                                          amount: value ?? 0,
+                                        })
+                                      }
+                                    />
+                                  </Tooltip>
+                                  <Text type='tertiary' size='small'>
+                                    {t('展示')}：
+                                    {renderQuota(Number(row.amount || 0))}
+                                  </Text>
+                                </div>
+                                <Button
+                                  size='small'
+                                  type='danger'
+                                  theme='borderless'
+                                  icon={<IconDelete />}
+                                  aria-label={t('删除模型限额')}
+                                  onClick={() => removeModelLimitRow(row.id)}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </Col>
+
+                    <Col span={24}>
+                      <Form.TextArea
+                        field='model_amount_limits'
+                        label={t('模型限额 JSON')}
+                        placeholder={t('{"gpt-5.5": 6250000, "*": 1000000}')}
+                        autosize={{ minRows: 4, maxRows: 10 }}
+                        onChange={handleModelLimitJsonChange}
+                        extraText={t(
+                          '键为平台模型名，值为原生额度；* 表示默认模型限额。留空表示不启用模型限额。',
+                        )}
+                        rules={[
+                          {
+                            validator: (rule, value) => {
+                              if (!value || value.trim() === '') return true;
+                              try {
+                                const parsed = JSON.parse(value);
+                                return (
+                                  parsed &&
+                                  typeof parsed === 'object' &&
+                                  !Array.isArray(parsed) &&
+                                  Object.values(parsed).every(
+                                    (v) =>
+                                      typeof v === 'number' &&
+                                      Number.isInteger(v) &&
+                                      v >= 0,
+                                  )
+                                );
+                              } catch {
+                                return false;
+                              }
+                            },
+                            message: t('请输入合法的模型限额 JSON'),
+                          },
+                        ]}
+                      />
                     </Col>
                   </Row>
                 </Card>

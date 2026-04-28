@@ -5,6 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
@@ -23,6 +24,11 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 	}
 	relayInfo.Billing = session
 	return nil
+}
+
+func ShouldPreConsumeFreeBilling(c *gin.Context, relayInfo *relaycommon.RelayInfo) bool {
+	_, billingType := ResolveGroupBillingType(c, relayInfo)
+	return billingType == ratio_setting.GroupBillingTypeSubscriptionOnly
 }
 
 // ---------------------------------------------------------------------------

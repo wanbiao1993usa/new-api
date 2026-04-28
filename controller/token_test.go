@@ -14,6 +14,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/mysql"
@@ -48,21 +49,21 @@ type sqliteColumnInfo struct {
 }
 
 type legacyToken struct {
-	Id                 int            `gorm:"primaryKey"`
-	UserId             int            `gorm:"index"`
-	Key                string         `gorm:"column:key;type:char(48);uniqueIndex"`
-	Status             int            `gorm:"default:1"`
-	Name               string         `gorm:"index"`
-	CreatedTime        int64          `gorm:"bigint"`
-	AccessedTime       int64          `gorm:"bigint"`
-	ExpiredTime        int64          `gorm:"bigint;default:-1"`
-	RemainQuota        int            `gorm:"default:0"`
+	Id                 int    `gorm:"primaryKey"`
+	UserId             int    `gorm:"index"`
+	Key                string `gorm:"column:key;type:char(48);uniqueIndex"`
+	Status             int    `gorm:"default:1"`
+	Name               string `gorm:"index"`
+	CreatedTime        int64  `gorm:"bigint"`
+	AccessedTime       int64  `gorm:"bigint"`
+	ExpiredTime        int64  `gorm:"bigint;default:-1"`
+	RemainQuota        int    `gorm:"default:0"`
 	UnlimitedQuota     bool
 	ModelLimitsEnabled bool
-	ModelLimits        string         `gorm:"type:text"`
-	AllowIps           *string        `gorm:"default:''"`
-	UsedQuota          int            `gorm:"default:0"`
-	Group              string         `gorm:"column:group;default:''"`
+	ModelLimits        string  `gorm:"type:text"`
+	AllowIps           *string `gorm:"default:''"`
+	UsedQuota          int     `gorm:"default:0"`
+	Group              string  `gorm:"column:group;default:''"`
 	CrossGroupRetry    bool
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
@@ -101,7 +102,7 @@ func openTokenControllerTestDB(t *testing.T) *gorm.DB {
 func migrateTokenControllerTestDB(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
-	if err := db.AutoMigrate(&model.Token{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Token{}); err != nil {
 		t.Fatalf("failed to migrate token table: %v", err)
 	}
 }
@@ -163,6 +164,16 @@ func openTokenControllerExternalDB(t *testing.T, dialect string, dsn string) (*g
 
 func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string) *model.Token {
 	t.Helper()
+	user := &model.User{
+		Id:       userID,
+		Username: fmt.Sprintf("token-user-%d", userID),
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+		AffCode:  fmt.Sprintf("tu%d", userID),
+	}
+	if err := db.Where("id = ?", userID).FirstOrCreate(user).Error; err != nil {
+		t.Fatalf("failed to create token owner: %v", err)
+	}
 
 	token := &model.Token{
 		UserId:         userID,
@@ -180,6 +191,23 @@ func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string
 		t.Fatalf("failed to create token: %v", err)
 	}
 	return token
+}
+
+func withTokenControllerGroupSettings(t *testing.T, usable string, visible string) {
+	t.Helper()
+	oldUsable := setting.UserUsableGroups2JSONString()
+	oldVisible := setting.UserVisibleGroups2JSONString()
+	requireNoError := func(err error) {
+		if err != nil {
+			t.Fatalf("failed to update group settings: %v", err)
+		}
+	}
+	requireNoError(setting.UpdateUserUsableGroupsByJSONString(usable))
+	requireNoError(setting.UpdateUserVisibleGroupsByJSONString(visible))
+	t.Cleanup(func() {
+		_ = setting.UpdateUserUsableGroupsByJSONString(oldUsable)
+		_ = setting.UpdateUserVisibleGroupsByJSONString(oldVisible)
+	})
 }
 
 func newAuthenticatedContext(t *testing.T, method string, target string, body any, userID int) (*gin.Context, *httptest.ResponseRecorder) {
@@ -503,6 +531,101 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	}
 	if strings.Contains(recorder.Body.String(), token.Key) {
 		t.Fatalf("update response leaked raw token key: %s", recorder.Body.String())
+	}
+}
+
+func TestAddTokenRejectsHiddenButAccessibleGroup(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	withTokenControllerGroupSettings(t, `{"default":"Default","vip":"VIP"}`, `{"vip":"VIP"}`)
+	if err := db.Create(&model.User{Id: 10, Username: "visible-user", Group: "vip", Status: common.UserStatusEnabled, AffCode: "tu10"}).Error; err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	body := map[string]any{
+		"name":                 "hidden-group-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "default",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 10)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected hidden group token creation to fail")
+	}
+	if !strings.Contains(response.Message, "无权创建或编辑 default 分组令牌") {
+		t.Fatalf("unexpected error message: %s", response.Message)
+	}
+}
+
+func TestUpdateTokenAllowsKeepingHiddenAccessibleGroup(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	withTokenControllerGroupSettings(t, `{"default":"Default","vip":"VIP"}`, `{"vip":"VIP"}`)
+	token := seedToken(t, db, 11, "legacy-token", "legacy1234token5678")
+	if err := db.Model(&model.User{}).Where("id = ?", 11).Update("group", "vip").Error; err != nil {
+		t.Fatalf("failed to update user group: %v", err)
+	}
+
+	body := map[string]any{
+		"id":                   token.Id,
+		"name":                 "legacy-token-updated",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "default",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 11)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected keeping hidden accessible group to succeed, got message: %s", response.Message)
+	}
+}
+
+func TestUpdateTokenRejectsChangingToHiddenAccessibleGroup(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	withTokenControllerGroupSettings(t, `{"default":"Default","vip":"VIP"}`, `{"vip":"VIP"}`)
+	token := seedToken(t, db, 12, "vip-token", "vip1234token5678")
+	if err := db.Model(&model.User{}).Where("id = ?", 12).Update("group", "vip").Error; err != nil {
+		t.Fatalf("failed to update user group: %v", err)
+	}
+	token.Group = "vip"
+	if err := db.Save(token).Error; err != nil {
+		t.Fatalf("failed to update token group: %v", err)
+	}
+
+	body := map[string]any{
+		"id":                   token.Id,
+		"name":                 "vip-token-updated",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "default",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 12)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected changing to hidden group to fail")
+	}
+	if !strings.Contains(response.Message, "无权创建或编辑 default 分组令牌") {
+		t.Fatalf("unexpected error message: %s", response.Message)
 	}
 }
 

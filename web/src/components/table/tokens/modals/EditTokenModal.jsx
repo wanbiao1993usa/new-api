@@ -172,6 +172,20 @@ const EditTokenModal = (props) => {
       data.remain_amount = Number(
         quotaToDisplayAmount(data.remain_quota || 0).toFixed(6),
       );
+      if (data.group) {
+        setGroups((prev) =>
+          prev.some((group) => group.value === data.group)
+            ? prev
+            : [
+                {
+                  label: data.group,
+                  value: data.group,
+                  ratio: t('已隐藏'),
+                },
+                ...prev,
+              ],
+        );
+      }
       if (formApiRef.current) {
         formApiRef.current.setValues({ ...getInitValues(), ...data });
       }

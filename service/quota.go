@@ -410,7 +410,11 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 		}
 		delta := int64(quota)
 		if delta != 0 {
-			if err := model.PostConsumeUserSubscriptionDelta(relayInfo.SubscriptionId, delta); err != nil {
+			modelName := relayInfo.SubscriptionModelName
+			if modelName == "" {
+				modelName = relayInfo.OriginModelName
+			}
+			if err := model.PostConsumeUserSubscriptionModelDelta(relayInfo.SubscriptionId, modelName, delta, false); err != nil {
 				return err
 			}
 			relayInfo.SubscriptionPostDelta += delta

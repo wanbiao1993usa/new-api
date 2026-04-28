@@ -147,7 +147,11 @@ func InitOptionMap() {
 	common.OptionMap["CreateCacheRatio"] = ratio_setting.CreateCacheRatio2JSONString()
 	common.OptionMap["GroupRatio"] = ratio_setting.GroupRatio2JSONString()
 	common.OptionMap["GroupGroupRatio"] = ratio_setting.GroupGroupRatio2JSONString()
+	common.OptionMap["GroupBillingType"] = ratio_setting.GroupBillingType2JSONString()
 	common.OptionMap["UserUsableGroups"] = setting.UserUsableGroups2JSONString()
+	common.OptionMap["UserVisibleGroups"] = setting.UserVisibleGroups2JSONString()
+	common.OptionMap["group_ratio_setting.group_special_usable_group"] = ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.MarshalJSONString()
+	common.OptionMap["group_ratio_setting.group_special_visible_group"] = ratio_setting.GetGroupRatioSetting().GroupSpecialVisibleGroup.MarshalJSONString()
 	common.OptionMap["CompletionRatio"] = ratio_setting.CompletionRatio2JSONString()
 	common.OptionMap["ImageRatio"] = ratio_setting.ImageRatio2JSONString()
 	common.OptionMap["AudioRatio"] = ratio_setting.AudioRatio2JSONString()
@@ -505,8 +509,12 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateGroupRatioByJSONString(value)
 	case "GroupGroupRatio":
 		err = ratio_setting.UpdateGroupGroupRatioByJSONString(value)
+	case "GroupBillingType":
+		err = ratio_setting.UpdateGroupBillingTypeByJSONString(value)
 	case "UserUsableGroups":
 		err = setting.UpdateUserUsableGroupsByJSONString(value)
+	case "UserVisibleGroups":
+		err = setting.UpdateUserVisibleGroupsByJSONString(value)
 	case "CompletionRatio":
 		err = ratio_setting.UpdateCompletionRatioByJSONString(value)
 	case "ModelPrice":

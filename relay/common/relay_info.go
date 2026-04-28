@@ -131,6 +131,9 @@ type RelayInfo struct {
 	// BillingSource indicates whether this request is billed from wallet quota or subscription.
 	// "" or "wallet" => wallet; "subscription" => subscription
 	BillingSource string
+	// BillingGroup/BillingGroupType capture the resolved real group and its funding rule at pre-consume time.
+	BillingGroup     string
+	BillingGroupType string
 	// SubscriptionId is the user_subscriptions.id used when BillingSource == "subscription"
 	SubscriptionId int
 	// SubscriptionPreConsumed is the amount pre-consumed on subscription item (quota units or 1)
@@ -140,6 +143,11 @@ type RelayInfo struct {
 	// SubscriptionPlanId / SubscriptionPlanTitle are used for logging/UI display.
 	SubscriptionPlanId    int
 	SubscriptionPlanTitle string
+	// SubscriptionModelName and model usage fields are used for subscription model-limit settlement/logging.
+	SubscriptionModelName                      string
+	SubscriptionModelLimitMatched              bool
+	SubscriptionModelAmountLimit               int64
+	SubscriptionModelAmountUsedAfterPreConsume int64
 	// RequestId is used for idempotent pre-consume/refund
 	RequestId string
 	// SubscriptionAmountTotal / SubscriptionAmountUsedAfterPreConsume are used to compute remaining in logs.

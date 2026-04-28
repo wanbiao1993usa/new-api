@@ -64,6 +64,58 @@ function formatResetPeriod(plan, t) {
   return t('不重置');
 }
 
+function parseModelAmountLimits(plan) {
+  const raw = plan?.model_amount_limits;
+  if (!raw || !String(raw).trim()) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function renderModelAmountLimits(text, record, t) {
+  const limits = parseModelAmountLimits(record?.plan);
+  const entries = Object.entries(limits);
+  if (!entries.length) {
+    return <Text type='tertiary'>{t('无')}</Text>;
+  }
+  const content = (
+    <div style={{ minWidth: 240, maxWidth: 360 }}>
+      <Text strong>{t('模型限额')}</Text>
+      <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+        {entries.map(([modelName, amount]) => (
+          <div
+            key={modelName}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr auto',
+              gap: 12,
+            }}
+          >
+            <Text ellipsis={{ showTooltip: true }}>
+              {modelName === '*' ? t('默认模型') : modelName}
+            </Text>
+            <Tooltip content={`${t('原生额度')}：${amount}`}>
+              <Text>{renderQuota(Number(amount || 0))}</Text>
+            </Tooltip>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+  return (
+    <Popover content={content} position='leftTop' showArrow>
+      <Tag color='cyan' shape='circle'>
+        {t('已配置')} {entries.length}
+      </Tag>
+    </Popover>
+  );
+}
+
 const renderPlanTitle = (text, record, t) => {
   const subtitle = record?.plan?.subtitle;
   const plan = record?.plan;
@@ -286,21 +338,21 @@ export const getSubscriptionsColumns = ({
   return [
     {
       title: 'ID',
-      dataIndex: ['plan', 'id'],
+      key: 'id',
       width: 60,
-      render: (text) => <Text type='tertiary'>#{text}</Text>,
+      render: (_, record) => <Text type='tertiary'>#{record?.plan?.id}</Text>,
     },
     {
       title: t('套餐'),
-      dataIndex: ['plan', 'title'],
+      key: 'title',
       width: 200,
-      render: (text, record) => renderPlanTitle(text, record, t),
+      render: (_, record) => renderPlanTitle(record?.plan?.title, record, t),
     },
     {
       title: t('价格'),
-      dataIndex: ['plan', 'price_amount'],
+      key: 'price',
       width: 100,
-      render: (text) => renderPrice(text),
+      render: (_, record) => renderPrice(record?.plan?.price_amount),
     },
     {
       title: t('购买上限'),
@@ -309,9 +361,11 @@ export const getSubscriptionsColumns = ({
     },
     {
       title: t('优先级'),
-      dataIndex: ['plan', 'sort_order'],
+      key: 'sort_order',
       width: 80,
-      render: (text) => <Text type='tertiary'>{Number(text || 0)}</Text>,
+      render: (_, record) => (
+        <Text type='tertiary'>{Number(record?.plan?.sort_order || 0)}</Text>
+      ),
     },
     {
       title: t('有效期'),
@@ -325,9 +379,9 @@ export const getSubscriptionsColumns = ({
     },
     {
       title: t('状态'),
-      dataIndex: ['plan', 'enabled'],
+      key: 'enabled',
       width: 80,
-      render: (text, record) => renderEnabled(text, record, t),
+      render: (_, record) => renderEnabled(record?.plan?.enabled, record, t),
     },
     {
       title: t('支付渠道'),
@@ -339,6 +393,11 @@ export const getSubscriptionsColumns = ({
       title: t('总额度'),
       width: 100,
       render: (text, record) => renderTotalAmount(text, record, t),
+    },
+    {
+      title: t('模型限额'),
+      width: 110,
+      render: (text, record) => renderModelAmountLimits(text, record, t),
     },
     {
       title: t('升级分组'),

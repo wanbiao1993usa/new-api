@@ -127,6 +127,12 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 	if relayInfo.UserSetting.BillingPreference != "" {
 		other["billing_preference"] = relayInfo.UserSetting.BillingPreference
 	}
+	if relayInfo.BillingGroup != "" {
+		other["billing_group"] = relayInfo.BillingGroup
+	}
+	if relayInfo.BillingGroupType != "" {
+		other["billing_group_type"] = relayInfo.BillingGroupType
+	}
 	if relayInfo.BillingSource == "subscription" {
 		if relayInfo.SubscriptionId != 0 {
 			other["subscription_id"] = relayInfo.SubscriptionId
@@ -143,6 +149,13 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		}
 		if relayInfo.SubscriptionPlanTitle != "" {
 			other["subscription_plan_title"] = relayInfo.SubscriptionPlanTitle
+		}
+		if relayInfo.SubscriptionModelName != "" {
+			other["subscription_model_name"] = relayInfo.SubscriptionModelName
+		}
+		if relayInfo.SubscriptionModelLimitMatched {
+			other["subscription_model_limit"] = relayInfo.SubscriptionModelAmountLimit
+			other["subscription_model_used"] = relayInfo.SubscriptionModelAmountUsedAfterPreConsume + relayInfo.SubscriptionPostDelta
 		}
 		// Compute "this request" subscription consumed + remaining
 		consumed := relayInfo.SubscriptionPreConsumed + relayInfo.SubscriptionPostDelta

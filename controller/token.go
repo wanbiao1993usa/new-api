@@ -9,7 +9,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -164,6 +166,57 @@ func GetTokenUsage(c *gin.Context) {
 	})
 }
 
+func resolveTokenUserGroup(c *gin.Context, userId int) (string, error) {
+	if group := strings.TrimSpace(c.GetString("group")); group != "" {
+		return group, nil
+	}
+	return model.GetUserGroup(userId, false)
+}
+
+func validateTokenGroupExists(group string) error {
+	if group == "" || group == "auto" {
+		return nil
+	}
+	if !ratio_setting.ContainsGroupRatio(group) {
+		return fmt.Errorf("分组 %s 已被弃用", group)
+	}
+	return nil
+}
+
+func validateTokenGroupVisible(c *gin.Context, userId int, group string) error {
+	if group == "" {
+		return nil
+	}
+	if err := validateTokenGroupExists(group); err != nil {
+		return err
+	}
+	userGroup, err := resolveTokenUserGroup(c, userId)
+	if err != nil {
+		return err
+	}
+	if !service.GroupInUserVisibleGroups(userGroup, group) {
+		return fmt.Errorf("无权创建或编辑 %s 分组令牌", group)
+	}
+	return nil
+}
+
+func validateTokenGroupAccessible(c *gin.Context, userId int, group string) error {
+	if group == "" {
+		return nil
+	}
+	if err := validateTokenGroupExists(group); err != nil {
+		return err
+	}
+	userGroup, err := resolveTokenUserGroup(c, userId)
+	if err != nil {
+		return err
+	}
+	if !service.GroupInUserAccessibleGroups(userGroup, group) {
+		return fmt.Errorf("无权访问 %s 分组", group)
+	}
+	return nil
+}
+
 func AddToken(c *gin.Context) {
 	token := model.Token{}
 	err := c.ShouldBindJSON(&token)
@@ -186,6 +239,10 @@ func AddToken(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
 			return
 		}
+	}
+	if err := validateTokenGroupVisible(c, c.GetInt("id"), token.Group); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
 	}
 	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
@@ -290,6 +347,17 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.Status = token.Status
 	} else {
 		// If you add more fields, please also update token.Update()
+		if token.Group == cleanToken.Group {
+			if err := validateTokenGroupAccessible(c, userId, token.Group); err != nil {
+				common.ApiErrorMsg(c, err.Error())
+				return
+			}
+		} else {
+			if err := validateTokenGroupVisible(c, userId, token.Group); err != nil {
+				common.ApiErrorMsg(c, err.Error())
+				return
+			}
+		}
 		cleanToken.Name = token.Name
 		cleanToken.ExpiredTime = token.ExpiredTime
 		cleanToken.RemainQuota = token.RemainQuota

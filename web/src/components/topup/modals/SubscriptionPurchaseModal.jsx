@@ -59,6 +59,8 @@ const SubscriptionPurchaseModal = ({
   onPayEpay,
 }) => {
   const plan = selectedPlan?.plan;
+  const visibleModelLimits = selectedPlan?.visible_model_amount_limits || {};
+  const visibleModelLimitEntries = Object.entries(visibleModelLimits);
   const totalAmount = Number(plan?.total_amount || 0);
   const { symbol, rate } = getCurrencyConfig();
   const price = plan ? Number(plan.price_amount || 0) : 0;
@@ -155,6 +157,33 @@ const SubscriptionPurchaseModal = ({
                   <Text className='text-slate-900 dark:text-slate-100'>
                     {plan.upgrade_group}
                   </Text>
+                </div>
+              ) : null}
+              {visibleModelLimitEntries.length > 0 ? (
+                <div className='space-y-2'>
+                  <div className='flex justify-between items-center'>
+                    <Text strong className='text-slate-700 dark:text-slate-200'>
+                      {t('模型限额')}：
+                    </Text>
+                    <Text className='text-slate-900 dark:text-slate-100'>
+                      {visibleModelLimitEntries.length} {t('项')}
+                    </Text>
+                  </div>
+                  <div className='space-y-1'>
+                    {visibleModelLimitEntries.map(([modelName, amount]) => (
+                      <div
+                        key={modelName}
+                        className='flex justify-between items-center text-xs'
+                      >
+                        <Text type='tertiary'>
+                          {modelName === '*' ? t('默认模型') : modelName}
+                        </Text>
+                        <Tooltip content={`${t('原生额度')}：${amount}`}>
+                          <Text>{renderQuota(Number(amount || 0))}</Text>
+                        </Tooltip>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : null}
               <Divider margin={8} />

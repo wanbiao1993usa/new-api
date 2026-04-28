@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -101,6 +103,7 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	tokenConsumed := s.tokenConsumed
 	extraReserved := s.extraReserved
 	subscriptionId := s.relayInfo.SubscriptionId
+	subscriptionModelName := s.relayInfo.SubscriptionModelName
 	funding := s.funding
 
 	gopool.Go(func() {
@@ -109,7 +112,7 @@ func (s *BillingSession) Refund(c *gin.Context) {
 			common.SysLog("error refunding billing source: " + err.Error())
 		}
 		if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
-			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
+			if err := model.PostConsumeUserSubscriptionModelDelta(subscriptionId, subscriptionModelName, -int64(extraReserved), false); err != nil {
 				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
 			}
 		}
@@ -138,7 +141,7 @@ func (s *BillingSession) needsRefundLocked() bool {
 		return true
 	}
 	// 订阅可能在 tokenConsumed=0 时仍预扣了额度
-	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.preConsumed > 0 {
+	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.subscriptionId > 0 {
 		return true
 	}
 	return false
@@ -213,8 +216,16 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 			}
 			s.tokenConsumed = 0
 		}
-		// TODO: model 层应定义哨兵错误（如 ErrNoActiveSubscription），用 errors.Is 替代字符串匹配
 		errMsg := err.Error()
+		if errors.Is(err, model.ErrNoActiveSubscription) {
+			return types.NewErrorWithStatusCode(fmt.Errorf("当前分组需要有效订阅，请先购买或续费套餐: %s", errMsg), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
+		if errors.Is(err, model.ErrSubscriptionQuotaInsufficient) {
+			return types.NewErrorWithStatusCode(fmt.Errorf("订阅总额度不足: %s", errMsg), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
+		if errors.Is(err, model.ErrSubscriptionModelQuotaInsufficient) {
+			return types.NewErrorWithStatusCode(fmt.Errorf("当前模型订阅额度不足: %s", errMsg), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
 		if strings.Contains(errMsg, "no active subscription") || strings.Contains(errMsg, "subscription quota insufficient") {
 			return types.NewErrorWithStatusCode(fmt.Errorf("订阅额度不足或未配置订阅: %s", errMsg), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
@@ -238,7 +249,7 @@ func (s *BillingSession) reserveFunding(delta int) error {
 		funding.consumed += delta
 		return nil
 	case *SubscriptionFunding:
-		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, int64(delta)); err != nil {
+		if err := model.PostConsumeUserSubscriptionModelDelta(funding.subscriptionId, funding.modelName, int64(delta), true); err != nil {
 			return types.NewErrorWithStatusCode(
 				fmt.Errorf("订阅额度不足或未配置订阅: %s", err.Error()),
 				types.ErrorCodeInsufficientUserQuota,
@@ -262,7 +273,7 @@ func (s *BillingSession) rollbackFundingReserve(delta int) {
 			funding.consumed -= delta
 		}
 	case *SubscriptionFunding:
-		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
+		if err := model.PostConsumeUserSubscriptionModelDelta(funding.subscriptionId, funding.modelName, -int64(delta), false); err != nil {
 			common.SysLog("error rolling back subscription funding reserve: " + err.Error())
 		}
 	}
@@ -304,10 +315,8 @@ func (s *BillingSession) shouldTrust(c *gin.Context) bool {
 	case BillingSourceWallet:
 		return s.relayInfo.UserQuota > trustQuota
 	case BillingSourceSubscription:
-		// 订阅不能启用信任旁路。原因：
-		// 1. PreConsumeUserSubscription 要求 amount>0 来创建预扣记录并锁定订阅
-		// 2. SubscriptionFunding.PreConsume 忽略参数，始终用 s.amount 预扣
-		// 3. 若信任旁路将 effectiveQuota 设为 0，会导致 preConsumedQuota 与实际订阅预扣不一致
+		// 订阅不能启用信任旁路。订阅预扣需要创建记录并锁定订阅实例，
+		// 即使预扣额度为 0 也必须完成权益校验。
 		return false
 	default:
 		return false
@@ -319,6 +328,9 @@ func (s *BillingSession) syncRelayInfo() {
 	info := s.relayInfo
 	info.FinalPreConsumedQuota = s.preConsumedQuota
 	info.BillingSource = s.funding.Source()
+	if info.BillingGroup == "" {
+		info.BillingGroup, info.BillingGroupType = ResolveGroupBillingType(nil, info)
+	}
 
 	if sub, ok := s.funding.(*SubscriptionFunding); ok {
 		info.SubscriptionId = sub.subscriptionId
@@ -328,6 +340,10 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionAmountUsedAfterPreConsume = sub.AmountUsedAfter + int64(s.extraReserved)
 		info.SubscriptionPlanId = sub.PlanId
 		info.SubscriptionPlanTitle = sub.PlanTitle
+		info.SubscriptionModelName = sub.modelName
+		info.SubscriptionModelLimitMatched = sub.ModelLimitMatched
+		info.SubscriptionModelAmountLimit = sub.ModelAmountLimit
+		info.SubscriptionModelAmountUsedAfterPreConsume = sub.ModelAmountUsedAfter + int64(s.extraReserved)
 	} else {
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
@@ -344,7 +360,21 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
+	billingGroup, groupBillingType := ResolveGroupBillingType(c, relayInfo)
+	relayInfo.BillingGroup = billingGroup
+	relayInfo.BillingGroupType = groupBillingType
+	if c != nil {
+		c.Set("billing_group", billingGroup)
+		c.Set("billing_group_type", groupBillingType)
+	}
+
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
+	switch groupBillingType {
+	case ratio_setting.GroupBillingTypeSubscriptionOnly:
+		pref = "subscription_only"
+	case ratio_setting.GroupBillingTypeWalletOnly:
+		pref = "wallet_only"
+	}
 
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
@@ -378,8 +408,8 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	trySubscription := func() (*BillingSession, *types.NewAPIError) {
 		subConsume := int64(preConsumedQuota)
-		if subConsume <= 0 {
-			subConsume = 1
+		if subConsume < 0 {
+			subConsume = 0
 		}
 		session := &BillingSession{
 			relayInfo: relayInfo,
@@ -424,7 +454,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		}
 		session, apiErr := trySubscription()
 		if apiErr != nil {
-			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
+			if groupBillingType == ratio_setting.GroupBillingTypeDefault && apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
 				return tryWallet()
 			}
 			return nil, apiErr

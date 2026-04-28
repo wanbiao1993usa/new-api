@@ -39,6 +39,7 @@ const RatioSetting = () => {
     CreateCacheRatio: '',
     CompletionRatio: '',
     GroupRatio: '',
+    GroupBillingType: '',
     GroupGroupRatio: '',
     ImageRatio: '',
     AudioRatio: '',
@@ -47,7 +48,9 @@ const RatioSetting = () => {
     DefaultUseAutoGroup: false,
     ExposeRatioEnabled: false,
     UserUsableGroups: '',
+    UserVisibleGroups: '',
     'group_ratio_setting.group_special_usable_group': '',
+    'group_ratio_setting.group_special_visible_group': '',
   });
 
   const [loading, setLoading] = useState(false);

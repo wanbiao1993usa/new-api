@@ -3,47 +3,88 @@ package service
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/gin-gonic/gin"
 )
 
-func GetUserUsableGroups(userGroup string) map[string]string {
+func applyGroupVisibilityRules(groups map[string]string, rules map[string]string) {
+	for specialGroup, desc := range rules {
+		if strings.HasPrefix(specialGroup, "-:") {
+			groupToRemove := strings.TrimPrefix(specialGroup, "-:")
+			delete(groups, groupToRemove)
+		} else if strings.HasPrefix(specialGroup, "+:") {
+			groupToAdd := strings.TrimPrefix(specialGroup, "+:")
+			groups[groupToAdd] = desc
+		} else {
+			groups[specialGroup] = desc
+		}
+	}
+}
+
+func ensureOwnGroup(groups map[string]string, userGroup string) {
+	if userGroup == "" {
+		return
+	}
+	if _, ok := groups[userGroup]; !ok {
+		groups[userGroup] = "用户分组"
+	}
+}
+
+func GetUserAccessibleGroups(userGroup string) map[string]string {
 	groupsCopy := setting.GetUserUsableGroupsCopy()
 	if userGroup != "" {
-		specialSettings, b := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(userGroup)
-		if b {
-			// 处理特殊可用分组
-			for specialGroup, desc := range specialSettings {
-				if strings.HasPrefix(specialGroup, "-:") {
-					// 移除分组
-					groupToRemove := strings.TrimPrefix(specialGroup, "-:")
-					delete(groupsCopy, groupToRemove)
-				} else if strings.HasPrefix(specialGroup, "+:") {
-					// 添加分组
-					groupToAdd := strings.TrimPrefix(specialGroup, "+:")
-					groupsCopy[groupToAdd] = desc
-				} else {
-					// 直接添加分组
-					groupsCopy[specialGroup] = desc
-				}
-			}
+		specialSettings, ok := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(userGroup)
+		if ok {
+			applyGroupVisibilityRules(groupsCopy, specialSettings)
 		}
-		// 如果userGroup不在UserUsableGroups中，返回UserUsableGroups + userGroup
-		if _, ok := groupsCopy[userGroup]; !ok {
-			groupsCopy[userGroup] = "用户分组"
-		}
+		ensureOwnGroup(groupsCopy, userGroup)
 	}
 	return groupsCopy
 }
 
+func GetUserVisibleGroups(userGroup string) map[string]string {
+	groupsCopy, configured := setting.GetUserVisibleGroupsCopy()
+	if !configured {
+		groupsCopy = GetUserAccessibleGroups(userGroup)
+	} else if userGroup != "" {
+		ensureOwnGroup(groupsCopy, userGroup)
+	}
+	if userGroup != "" {
+		specialSettings, ok := ratio_setting.GetGroupRatioSetting().GroupSpecialVisibleGroup.Get(userGroup)
+		if ok {
+			applyGroupVisibilityRules(groupsCopy, specialSettings)
+		}
+		ensureOwnGroup(groupsCopy, userGroup)
+	}
+	return groupsCopy
+}
+
+func GetUserUsableGroups(userGroup string) map[string]string {
+	return GetUserAccessibleGroups(userGroup)
+}
+
+func GroupInUserAccessibleGroups(userGroup, groupName string) bool {
+	_, ok := GetUserAccessibleGroups(userGroup)[groupName]
+	return ok
+}
+
+func GroupInUserVisibleGroups(userGroup, groupName string) bool {
+	_, ok := GetUserVisibleGroups(userGroup)[groupName]
+	return ok
+}
+
 func GroupInUserUsableGroups(userGroup, groupName string) bool {
-	_, ok := GetUserUsableGroups(userGroup)[groupName]
+	_, ok := GetUserAccessibleGroups(userGroup)[groupName]
 	return ok
 }
 
 // GetUserAutoGroup 根据用户分组获取自动分组设置
 func GetUserAutoGroup(userGroup string) []string {
-	groups := GetUserUsableGroups(userGroup)
+	groups := GetUserAccessibleGroups(userGroup)
 	autoGroups := make([]string, 0)
 	for _, group := range setting.GetAutoGroups() {
 		if _, ok := groups[group]; ok {
@@ -62,4 +103,26 @@ func GetUserGroupRatio(userGroup, group string) float64 {
 		return ratio
 	}
 	return ratio_setting.GetGroupRatio(group)
+}
+
+func ResolveBillingGroup(c *gin.Context, relayInfo *relaycommon.RelayInfo) string {
+	if c != nil {
+		if autoGroup := common.GetContextKeyString(c, constant.ContextKeyAutoGroup); autoGroup != "" {
+			return autoGroup
+		}
+		if autoGroup, exists := c.Get("auto_group"); exists {
+			if group, ok := autoGroup.(string); ok && group != "" {
+				return group
+			}
+		}
+	}
+	if relayInfo != nil && relayInfo.UsingGroup != "" {
+		return relayInfo.UsingGroup
+	}
+	return ""
+}
+
+func ResolveGroupBillingType(c *gin.Context, relayInfo *relaycommon.RelayInfo) (string, string) {
+	group := ResolveBillingGroup(c, relayInfo)
+	return group, ratio_setting.GetGroupBillingType(group)
 }

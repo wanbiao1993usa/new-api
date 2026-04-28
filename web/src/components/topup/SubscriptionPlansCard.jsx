@@ -48,6 +48,12 @@ function getEpayMethods(payMethods = []) {
   );
 }
 
+function getVisibleModelLimits(planDTO) {
+  const limits = planDTO?.visible_model_amount_limits;
+  if (!limits || typeof limits !== 'object') return [];
+  return Object.entries(limits);
+}
+
 // 提交易支付表单
 function submitEpayForm({ url, params }) {
   const form = document.createElement('form');
@@ -510,6 +516,19 @@ const SubscriptionPlansCard = ({
                   formatSubscriptionResetPeriod(plan, t) === t('不重置')
                     ? null
                     : `${t('额度重置')}: ${formatSubscriptionResetPeriod(plan, t)}`;
+                const visibleModelLimits = getVisibleModelLimits(p);
+                const modelLimitLabel = visibleModelLimits.length
+                  ? `${t('模型限额')}: ${visibleModelLimits.length} ${t('项')}`
+                  : null;
+                const modelLimitTooltip = visibleModelLimits.length
+                  ? visibleModelLimits
+                      .map(([modelName, amount]) => {
+                        const label =
+                          modelName === '*' ? t('默认模型') : modelName;
+                        return `${label}: ${renderQuota(Number(amount || 0))}`;
+                      })
+                      .join('\n')
+                  : '';
                 const planBenefits = [
                   {
                     label: `${t('有效期')}: ${formatSubscriptionDuration(plan, t)}`,
@@ -523,6 +542,9 @@ const SubscriptionPlansCard = ({
                     : { label: totalLabel },
                   limitLabel ? { label: limitLabel } : null,
                   upgradeLabel ? { label: upgradeLabel } : null,
+                  modelLimitLabel
+                    ? { label: modelLimitLabel, tooltip: modelLimitTooltip }
+                    : null,
                 ].filter(Boolean);
 
                 return (

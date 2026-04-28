@@ -4,6 +4,7 @@ import {
   Input,
   InputNumber,
   Checkbox,
+  Select,
   Typography,
   Popconfirm,
 } from '@douyinfe/semi-ui';
@@ -25,47 +26,95 @@ function parseJSON(str, fallback) {
   }
 }
 
-function buildRows(groupRatioStr, userUsableGroupsStr) {
+const billingTypeOptions = [
+  { value: 'default', label: '保持现状' },
+  { value: 'subscription_only', label: '仅订阅' },
+  { value: 'wallet_only', label: '仅余额' },
+];
+
+function parseBillingType(value) {
+  if (value === 'subscription_only' || value === 'wallet_only') return value;
+  return 'default';
+}
+
+function buildRows(
+  groupRatioStr,
+  userUsableGroupsStr,
+  userVisibleGroupsStr,
+  groupBillingTypeStr,
+) {
   const ratioMap = parseJSON(groupRatioStr, {});
   const usableMap = parseJSON(userUsableGroupsStr, {});
+  const visibleConfigured = !!(
+    userVisibleGroupsStr && userVisibleGroupsStr.trim()
+  );
+  const visibleMap = visibleConfigured
+    ? parseJSON(userVisibleGroupsStr, {})
+    : {};
+  const billingTypeMap = parseJSON(groupBillingTypeStr, {});
 
   const allNames = new Set([
     ...Object.keys(ratioMap),
     ...Object.keys(usableMap),
+    ...Object.keys(visibleMap),
+    ...Object.keys(billingTypeMap),
   ]);
 
   return Array.from(allNames).map((name) => ({
     _id: uid(),
     name,
     ratio: ratioMap[name] ?? 1,
-    selectable: name in usableMap,
-    description: usableMap[name] ?? '',
+    accessible: name in usableMap,
+    visible: visibleConfigured ? name in visibleMap : name in usableMap,
+    description: visibleMap[name] ?? usableMap[name] ?? '',
+    billingType: parseBillingType(billingTypeMap[name]),
   }));
 }
 
 export function serializeGroupTable(rows) {
   const groupRatio = {};
   const userUsableGroups = {};
+  const userVisibleGroups = {};
+  const groupBillingType = {};
 
   rows.forEach((row) => {
     if (!row.name) return;
     groupRatio[row.name] = row.ratio;
-    if (row.selectable) {
+    if (row.billingType && row.billingType !== 'default') {
+      groupBillingType[row.name] = row.billingType;
+    }
+    if (row.accessible) {
       userUsableGroups[row.name] = row.description;
+    }
+    if (row.visible) {
+      userVisibleGroups[row.name] = row.description;
     }
   });
 
   return {
     GroupRatio: JSON.stringify(groupRatio, null, 2),
     UserUsableGroups: JSON.stringify(userUsableGroups, null, 2),
+    UserVisibleGroups: JSON.stringify(userVisibleGroups, null, 2),
+    GroupBillingType: JSON.stringify(groupBillingType, null, 2),
   };
 }
 
-export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
+export default function GroupTable({
+  groupRatio,
+  userUsableGroups,
+  userVisibleGroups,
+  groupBillingType,
+  onChange,
+}) {
   const { t } = useTranslation();
 
   const [rows, setRows] = useState(() =>
-    buildRows(groupRatio, userUsableGroups),
+    buildRows(
+      groupRatio,
+      userUsableGroups,
+      userVisibleGroups,
+      groupBillingType,
+    ),
   );
 
   // Use functional setRows to keep updateRow/addRow/removeRow referentially
@@ -106,8 +155,10 @@ export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
           _id: uid(),
           name: newName,
           ratio: 1,
-          selectable: true,
+          accessible: true,
+          visible: true,
           description: '',
+          billingType: 'default',
         },
       ];
     });
@@ -170,17 +221,48 @@ export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
         ),
       },
       {
-        title: t('用户可选'),
-        dataIndex: 'selectable',
-        key: 'selectable',
+        title: t('扣费类型'),
+        dataIndex: 'billingType',
+        key: 'billingType',
+        width: 130,
+        render: (_, record) => (
+          <Select
+            size='small'
+            value={record.billingType || 'default'}
+            optionList={billingTypeOptions.map((item) => ({
+              ...item,
+              label: t(item.label),
+            }))}
+            style={{ width: '100%' }}
+            onChange={(v) => updateRow(record._id, 'billingType', v)}
+          />
+        ),
+      },
+      {
+        title: t('可访问'),
+        dataIndex: 'accessible',
+        key: 'accessible',
         width: 90,
         align: 'center',
         render: (_, record) => (
           <Checkbox
-            checked={record.selectable}
+            checked={record.accessible}
             onChange={(e) =>
-              updateRow(record._id, 'selectable', e.target.checked)
+              updateRow(record._id, 'accessible', e.target.checked)
             }
+          />
+        ),
+      },
+      {
+        title: t('创建可见'),
+        dataIndex: 'visible',
+        key: 'visible',
+        width: 100,
+        align: 'center',
+        render: (_, record) => (
+          <Checkbox
+            checked={record.visible}
+            onChange={(e) => updateRow(record._id, 'visible', e.target.checked)}
           />
         ),
       },
@@ -189,7 +271,7 @@ export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
         dataIndex: 'description',
         key: 'description',
         render: (_, record) =>
-          record.selectable ? (
+          record.accessible || record.visible ? (
             <Input
               size='small'
               value={record.description}

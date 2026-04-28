@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -14,7 +15,8 @@ import (
 // ---- Shared types ----
 
 type SubscriptionPlanDTO struct {
-	Plan model.SubscriptionPlan `json:"plan"`
+	Plan                     model.SubscriptionPlan `json:"plan"`
+	VisibleModelAmountLimits map[string]int64       `json:"visible_model_amount_limits,omitempty"`
 }
 
 type BillingPreferenceRequest struct {
@@ -24,6 +26,8 @@ type BillingPreferenceRequest struct {
 // ---- User APIs ----
 
 func GetSubscriptionPlans(c *gin.Context) {
+	userId := c.GetInt("id")
+	userGroup, _ := model.GetUserGroup(userId, false)
 	var plans []model.SubscriptionPlan
 	if err := model.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.ApiError(c, err)
@@ -32,10 +36,59 @@ func GetSubscriptionPlans(c *gin.Context) {
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
 		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
+			Plan:                     p,
+			VisibleModelAmountLimits: buildVisibleModelAmountLimits(&p, userGroup),
 		})
 	}
 	common.ApiSuccess(c, result)
+}
+
+func buildVisibleModelAmountLimits(plan *model.SubscriptionPlan, currentUserGroup string) map[string]int64 {
+	if plan == nil {
+		return nil
+	}
+	limits, err := plan.GetModelAmountLimitsMap()
+	if err != nil || len(limits) == 0 {
+		return nil
+	}
+	targetUserGroup := strings.TrimSpace(plan.UpgradeGroup)
+	if targetUserGroup == "" {
+		targetUserGroup = currentUserGroup
+	}
+	usableGroups := service.GetUserUsableGroups(targetUserGroup)
+	enabledModels := make(map[string]struct{})
+	hasSubscriptionGroup := false
+	for groupName := range usableGroups {
+		if ratio_setting.GetGroupBillingType(groupName) != ratio_setting.GroupBillingTypeSubscriptionOnly {
+			continue
+		}
+		hasSubscriptionGroup = true
+		for _, modelName := range model.GetGroupEnabledModels(groupName) {
+			enabledModels[modelName] = struct{}{}
+		}
+	}
+	if !hasSubscriptionGroup {
+		return nil
+	}
+	visible := make(map[string]int64)
+	for modelName, amount := range limits {
+		if modelName == "*" {
+			visible[modelName] = amount
+			continue
+		}
+		if _, ok := enabledModels[modelName]; ok {
+			visible[modelName] = amount
+			continue
+		}
+		formatted := ratio_setting.FormatMatchingModelName(modelName)
+		if _, ok := enabledModels[formatted]; ok {
+			visible[modelName] = amount
+		}
+	}
+	if len(visible) == 0 {
+		return nil
+	}
+	return visible
 }
 
 func GetSubscriptionSelf(c *gin.Context) {
@@ -144,6 +197,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
 	}
+	if err := model.CheckSubscriptionModelAmountLimits(req.Plan.ModelAmountLimits); err != nil {
+		common.ApiErrorMsg(c, "模型限额配置错误: "+err.Error())
+		return
+	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
 	if req.Plan.UpgradeGroup != "" {
 		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
@@ -207,6 +264,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
 	}
+	if err := model.CheckSubscriptionModelAmountLimits(req.Plan.ModelAmountLimits); err != nil {
+		common.ApiErrorMsg(c, "模型限额配置错误: "+err.Error())
+		return
+	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
 	if req.Plan.UpgradeGroup != "" {
 		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
@@ -236,6 +297,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"creem_product_id":           req.Plan.CreemProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"total_amount":               req.Plan.TotalAmount,
+			"model_amount_limits":        req.Plan.ModelAmountLimits,
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
