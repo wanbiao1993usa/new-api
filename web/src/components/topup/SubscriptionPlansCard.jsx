@@ -505,32 +505,23 @@ const SubscriptionPlansCard = ({
                                   limit > 0 ? Math.max(0, limit - used) : 0;
                                 const label =
                                   modelName === '*' ? t('默认模型') : modelName;
-                                const percent =
+                                const remainingPercent =
                                   limit > 0
                                     ? Math.min(
                                         100,
-                                        Math.round((used / limit) * 100),
+                                        Math.round((remain / limit) * 100),
                                       )
                                     : 0;
                                 return (
-                                  <Tooltip
+                                  <div
                                     key={modelName}
-                                    content={`${t('原生额度')}：${used}/${limit} · ${t('剩余')} ${remain}`}
+                                    className='flex items-center justify-between gap-3'
                                   >
-                                    <div className='flex items-center justify-between gap-3'>
-                                      <span className='truncate'>{label}</span>
-                                      <span className='shrink-0'>
-                                        {renderQuota(used)}/
-                                        {renderQuota(limit)} · {t('剩余')}{' '}
-                                        {renderQuota(remain)}
-                                        {limit > 0 && (
-                                          <span className='ml-1'>
-                                            {percent}%
-                                          </span>
-                                        )}
-                                      </span>
-                                    </div>
-                                  </Tooltip>
+                                    <span className='truncate'>{label}</span>
+                                    <span className='shrink-0'>
+                                      {t('剩余')} {remainingPercent}%
+                                    </span>
+                                  </div>
                                 );
                               },
                             )}
