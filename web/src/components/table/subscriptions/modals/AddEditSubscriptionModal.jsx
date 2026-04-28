@@ -760,11 +760,11 @@ const AddEditSubscriptionModal = ({
                       <Form.TextArea
                         field='model_amount_limits'
                         label={t('模型限额 JSON')}
-                        placeholder={t('{"gpt-5.5": 6250000, "*": 1000000}')}
+                        placeholder={t('{"gpt-5.5*": 6250000, "*": 1000000}')}
                         autosize={{ minRows: 4, maxRows: 10 }}
                         onChange={handleModelLimitJsonChange}
                         extraText={t(
-                          '键为平台模型名，值为原生额度；* 表示未单独配置的其他模型共享限额。留空表示不启用模型限额。',
+                          '键为平台模型名，值为原生额度；gpt-5.5* 表示前缀匹配，* 表示未单独配置的其他模型共享限额。留空表示不启用模型限额。',
                         )}
                         rules={[
                           {

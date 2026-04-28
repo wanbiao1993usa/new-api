@@ -76,12 +76,7 @@ func buildVisibleModelAmountLimits(plan *model.SubscriptionPlan, currentUserGrou
 			visible[modelName] = amount
 			continue
 		}
-		if _, ok := enabledModels[modelName]; ok {
-			visible[modelName] = amount
-			continue
-		}
-		formatted := ratio_setting.FormatMatchingModelName(modelName)
-		if _, ok := enabledModels[formatted]; ok {
+		if subscriptionModelLimitVisibleForEnabledModels(modelName, enabledModels) {
 			visible[modelName] = amount
 		}
 	}
@@ -89,6 +84,43 @@ func buildVisibleModelAmountLimits(plan *model.SubscriptionPlan, currentUserGrou
 		return nil
 	}
 	return visible
+}
+
+func subscriptionModelLimitVisibleForEnabledModels(limitKey string, enabledModels map[string]struct{}) bool {
+	limitKey = strings.TrimSpace(limitKey)
+	if limitKey == "" {
+		return false
+	}
+	if _, ok := enabledModels[limitKey]; ok {
+		return true
+	}
+	formatted := ratio_setting.FormatMatchingModelName(limitKey)
+	if _, ok := enabledModels[formatted]; ok {
+		return true
+	}
+	if !strings.HasSuffix(limitKey, "*") || limitKey == "*" {
+		return false
+	}
+	prefix := strings.TrimSuffix(limitKey, "*")
+	if prefix == "" || strings.Contains(prefix, "*") {
+		return false
+	}
+	for enabledModel := range enabledModels {
+		if strings.HasPrefix(enabledModel, prefix) {
+			return true
+		}
+		formattedEnabled := ratio_setting.FormatMatchingModelName(enabledModel)
+		if formattedEnabled != "" && strings.HasPrefix(formattedEnabled, prefix) {
+			return true
+		}
+		if base, ok := ratio_setting.CompactBaseModelName(enabledModel); ok {
+			base = ratio_setting.FormatMatchingModelName(base)
+			if base != "" && strings.HasPrefix(base, prefix) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func GetSubscriptionSelf(c *gin.Context) {

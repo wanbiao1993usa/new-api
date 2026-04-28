@@ -118,6 +118,76 @@ func TestPreConsumeUserSubscription_ModelLimitInsufficientDoesNotConsume(t *test
 	assert.EqualValues(t, 0, usageCount)
 }
 
+func TestFindSubscriptionModelLimit_PrefixWildcardPriority(t *testing.T) {
+	plan := &SubscriptionPlan{
+		ModelAmountLimits: `{"gpt-5.5-mini":8000,"gpt-5.5*":5000,"gpt-5*":9000,"*":1000}`,
+	}
+
+	limit, matched, err := findSubscriptionModelLimit(plan, "gpt-5.5-mini")
+	require.NoError(t, err)
+	assert.True(t, matched)
+	assert.EqualValues(t, 8000, limit)
+	assert.Equal(t, "gpt-5.5-mini", matchSubscriptionModelLimitKey(map[string]int64{
+		"gpt-5.5-mini": 8000,
+		"gpt-5.5*":     5000,
+		"gpt-5*":       9000,
+		"*":            1000,
+	}, "gpt-5.5-mini"))
+
+	limit, matched, err = findSubscriptionModelLimit(plan, "gpt-5.5-pro")
+	require.NoError(t, err)
+	assert.True(t, matched)
+	assert.EqualValues(t, 5000, limit)
+
+	limit, matched, err = findSubscriptionModelLimit(plan, "gpt-5-nano")
+	require.NoError(t, err)
+	assert.True(t, matched)
+	assert.EqualValues(t, 9000, limit)
+
+	limit, matched, err = findSubscriptionModelLimit(plan, "claude-sonnet-4")
+	require.NoError(t, err)
+	assert.True(t, matched)
+	assert.EqualValues(t, 1000, limit)
+}
+
+func TestPreConsumeUserSubscription_WildcardLimitsAreSharedAcrossMatchingModels(t *testing.T) {
+	truncateTables(t)
+
+	insertSubscriptionLimitUser(t, 511)
+	insertSubscriptionLimitPlan(t, 611, 10000, `{"gpt-5.5*":1000,"*":500}`, SubscriptionResetNever)
+	insertActiveUserSubscriptionForLimitTest(t, 711, 511, 611, 10000, 0)
+
+	res, err := PreConsumeUserSubscription("req-prefix-wildcard-1", 511, "gpt-5.5", 0, 600)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.True(t, res.ModelLimitMatched)
+	assert.EqualValues(t, 1000, res.ModelAmountLimit)
+	assert.EqualValues(t, 600, res.ModelAmountUsedAfter)
+
+	res, err = PreConsumeUserSubscription("req-prefix-wildcard-2", 511, "gpt-5.5-mini", 0, 400)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.EqualValues(t, 1000, res.ModelAmountUsedAfter)
+
+	res, err = PreConsumeUserSubscription("req-prefix-wildcard-3", 511, "gpt-5.5-pro", 0, 1)
+	require.Nil(t, res)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrSubscriptionModelQuotaInsufficient))
+	assert.EqualValues(t, 1000, getSubscriptionLimitUsed(t, 711))
+
+	res, err = PreConsumeUserSubscription("req-other-wildcard-1", 511, "claude-sonnet-4", 0, 300)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.EqualValues(t, 500, res.ModelAmountLimit)
+	assert.EqualValues(t, 300, res.ModelAmountUsedAfter)
+
+	res, err = PreConsumeUserSubscription("req-other-wildcard-2", 511, "gemini-2.5-pro", 0, 250)
+	require.Nil(t, res)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrSubscriptionModelQuotaInsufficient))
+	assert.EqualValues(t, 1300, getSubscriptionLimitUsed(t, 711))
+}
+
 func TestPreConsumeUserSubscription_ConcurrentBoundaryDoesNotExceedModelLimit(t *testing.T) {
 	truncateTables(t)
 
@@ -254,6 +324,45 @@ func TestGetAllUserSubscriptionsIncludesModelLimitUsageSummary(t *testing.T) {
 	assert.EqualValues(t, 300, summaries[0].ModelAmountUsages["other-model"])
 	assert.EqualValues(t, 500, summaries[0].ModelAmountLimitUsages["gpt-test"])
 	assert.EqualValues(t, 300, summaries[0].ModelAmountLimitUsages["*"])
+}
+
+func TestGetAllUserSubscriptionsGroupsPrefixWildcardUsageSummary(t *testing.T) {
+	truncateTables(t)
+
+	insertSubscriptionLimitUser(t, 512)
+	insertSubscriptionLimitPlan(t, 612, 0, `{"gpt-5.5-mini":700,"gpt-5.5*":1000,"*":500}`, SubscriptionResetNever)
+	insertActiveUserSubscriptionForLimitTest(t, 712, 512, 612, 0, 800)
+	require.NoError(t, DB.Create(&UserSubscriptionModelUsage{
+		UserSubscriptionId: 712,
+		UserId:             512,
+		ModelName:          "gpt-5.5-pro",
+		AmountUsed:         300,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscriptionModelUsage{
+		UserSubscriptionId: 712,
+		UserId:             512,
+		ModelName:          "gpt-5.5-turbo",
+		AmountUsed:         200,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscriptionModelUsage{
+		UserSubscriptionId: 712,
+		UserId:             512,
+		ModelName:          "gpt-5.5-mini",
+		AmountUsed:         100,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscriptionModelUsage{
+		UserSubscriptionId: 712,
+		UserId:             512,
+		ModelName:          "other-model",
+		AmountUsed:         50,
+	}).Error)
+
+	summaries, err := GetAllUserSubscriptions(512)
+	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	assert.EqualValues(t, 500, summaries[0].ModelAmountLimitUsages["gpt-5.5*"])
+	assert.EqualValues(t, 100, summaries[0].ModelAmountLimitUsages["gpt-5.5-mini"])
+	assert.EqualValues(t, 50, summaries[0].ModelAmountLimitUsages["*"])
 }
 
 func TestSubscriptionLifecycle_OverlappingUpgradeSubscriptionsDowngradeAfterLastExpires(t *testing.T) {

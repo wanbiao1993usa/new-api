@@ -217,8 +217,14 @@ func CheckSubscriptionModelAmountLimits(raw string) error {
 		return err
 	}
 	for modelName, amount := range limits {
-		if strings.TrimSpace(modelName) == "" {
+		modelName = strings.TrimSpace(modelName)
+		if modelName == "" {
 			return errors.New("model name cannot be empty")
+		}
+		if strings.Contains(modelName, "*") && modelName != "*" {
+			if !strings.HasSuffix(modelName, "*") || strings.Contains(strings.TrimSuffix(modelName, "*"), "*") {
+				return fmt.Errorf("model wildcard only supports a single trailing *: %s", modelName)
+			}
 		}
 		if amount < 0 {
 			return fmt.Errorf("model amount limit cannot be negative: %s", modelName)
@@ -234,26 +240,45 @@ func (p *SubscriptionPlan) GetModelAmountLimitsMap() (map[string]int64, error) {
 	return ParseSubscriptionModelAmountLimits(p.ModelAmountLimits)
 }
 
-func findSubscriptionModelLimit(plan *SubscriptionPlan, modelName string) (int64, bool, error) {
+func getSubscriptionModelLimitMatch(plan *SubscriptionPlan, modelName string) (map[string]int64, string, int64, bool, error) {
 	limits, err := plan.GetModelAmountLimitsMap()
 	if err != nil {
-		return 0, false, err
+		return nil, "", 0, false, err
 	}
 	if len(limits) == 0 {
-		return 0, false, nil
+		return limits, "", 0, false, nil
 	}
-	candidates := []string{strings.TrimSpace(modelName)}
-	if formatted := ratio_setting.FormatMatchingModelName(modelName); formatted != "" && formatted != candidates[0] {
-		candidates = append(candidates, formatted)
+	limitKey := matchSubscriptionModelLimitKey(limits, modelName)
+	if limitKey == "" {
+		return limits, "", 0, false, nil
+	}
+	return limits, limitKey, limits[limitKey], true, nil
+}
+
+func findSubscriptionModelLimit(plan *SubscriptionPlan, modelName string) (int64, bool, error) {
+	_, _, limit, matched, err := getSubscriptionModelLimitMatch(plan, modelName)
+	return limit, matched, err
+}
+
+func subscriptionModelLimitCandidates(modelName string) []string {
+	modelName = strings.TrimSpace(modelName)
+	raw := make([]string, 0, 3)
+	if modelName != "" {
+		raw = append(raw, modelName)
+	}
+	if formatted := ratio_setting.FormatMatchingModelName(modelName); formatted != "" {
+		raw = append(raw, formatted)
 	}
 	if base, ok := ratio_setting.CompactBaseModelName(modelName); ok {
 		base = ratio_setting.FormatMatchingModelName(base)
 		if base != "" {
-			candidates = append(candidates, base)
+			raw = append(raw, base)
 		}
 	}
-	seen := make(map[string]struct{}, len(candidates))
-	for _, candidate := range candidates {
+	seen := make(map[string]struct{}, len(raw))
+	candidates := make([]string, 0, len(raw))
+	for _, candidate := range raw {
+		candidate = strings.TrimSpace(candidate)
 		if candidate == "" {
 			continue
 		}
@@ -261,14 +286,21 @@ func findSubscriptionModelLimit(plan *SubscriptionPlan, modelName string) (int64
 			continue
 		}
 		seen[candidate] = struct{}{}
-		if limit, ok := limits[candidate]; ok {
-			return limit, true, nil
-		}
+		candidates = append(candidates, candidate)
 	}
-	if limit, ok := limits["*"]; ok {
-		return limit, true, nil
+	return candidates
+}
+
+func subscriptionModelLimitWildcardPrefix(limitKey string) (string, bool) {
+	limitKey = strings.TrimSpace(limitKey)
+	if limitKey == "*" || !strings.HasSuffix(limitKey, "*") {
+		return "", false
 	}
-	return 0, false, nil
+	prefix := strings.TrimSuffix(limitKey, "*")
+	if prefix == "" || strings.Contains(prefix, "*") {
+		return "", false
+	}
+	return prefix, true
 }
 
 // Subscription order (payment -> webhook -> create UserSubscription)
@@ -934,34 +966,57 @@ func matchSubscriptionModelLimitKey(limits map[string]int64, modelName string) s
 	if len(limits) == 0 {
 		return ""
 	}
-	modelName = strings.TrimSpace(modelName)
-	candidates := []string{modelName}
-	if formatted := ratio_setting.FormatMatchingModelName(modelName); formatted != "" && formatted != modelName {
-		candidates = append(candidates, formatted)
-	}
-	if base, ok := ratio_setting.CompactBaseModelName(modelName); ok {
-		base = ratio_setting.FormatMatchingModelName(base)
-		if base != "" {
-			candidates = append(candidates, base)
-		}
-	}
-	seen := make(map[string]struct{}, len(candidates))
+	candidates := subscriptionModelLimitCandidates(modelName)
 	for _, candidate := range candidates {
-		if candidate == "" {
-			continue
-		}
-		if _, ok := seen[candidate]; ok {
-			continue
-		}
-		seen[candidate] = struct{}{}
 		if _, ok := limits[candidate]; ok {
 			return candidate
 		}
+	}
+	wildcardKey := ""
+	wildcardPrefixLen := -1
+	for limitKey := range limits {
+		prefix, ok := subscriptionModelLimitWildcardPrefix(limitKey)
+		if !ok {
+			continue
+		}
+		for _, candidate := range candidates {
+			if !strings.HasPrefix(candidate, prefix) {
+				continue
+			}
+			if len(prefix) > wildcardPrefixLen || (len(prefix) == wildcardPrefixLen && limitKey < wildcardKey) {
+				wildcardKey = limitKey
+				wildcardPrefixLen = len(prefix)
+			}
+			break
+		}
+	}
+	if wildcardKey != "" {
+		return wildcardKey
 	}
 	if _, ok := limits["*"]; ok {
 		return "*"
 	}
 	return ""
+}
+
+func getSubscriptionModelLimitUsedTx(tx *gorm.DB, subId int, limits map[string]int64, limitKey string) (int64, error) {
+	if tx == nil {
+		return 0, errors.New("tx is nil")
+	}
+	if subId <= 0 || len(limits) == 0 || strings.TrimSpace(limitKey) == "" {
+		return 0, nil
+	}
+	var usages []UserSubscriptionModelUsage
+	if err := tx.Where("user_subscription_id = ?", subId).Find(&usages).Error; err != nil {
+		return 0, err
+	}
+	var used int64
+	for _, usage := range usages {
+		if matchSubscriptionModelLimitKey(limits, usage.ModelName) == limitKey {
+			used += usage.AmountUsed
+		}
+	}
+	return used, nil
 }
 
 // AdminInvalidateUserSubscription marks a user subscription as cancelled and ends it immediately.
@@ -1262,19 +1317,31 @@ func applySubscriptionModelUsageDeltaTx(tx *gorm.DB, sub *UserSubscription, plan
 	if err != nil {
 		return false, 0, 0, 0, err
 	}
-	usedBefore := usage.AmountUsed
-	limit, matched, err := findSubscriptionModelLimit(plan, modelName)
+	actualUsedBefore := usage.AmountUsed
+	actualUsedAfter := actualUsedBefore + delta
+	if actualUsedAfter < 0 {
+		actualUsedAfter = 0
+	}
+	effectiveDelta := actualUsedAfter - actualUsedBefore
+	usedBefore := actualUsedBefore
+	limits, limitKey, limit, matched, err := getSubscriptionModelLimitMatch(plan, modelName)
 	if err != nil {
 		return false, 0, 0, 0, err
 	}
-	newUsed := usedBefore + delta
+	if matched {
+		usedBefore, err = getSubscriptionModelLimitUsedTx(tx, sub.Id, limits, limitKey)
+		if err != nil {
+			return false, 0, 0, 0, err
+		}
+	}
+	newUsed := usedBefore + effectiveDelta
 	if newUsed < 0 {
 		newUsed = 0
 	}
 	if enforceLimit && matched && newUsed > limit {
 		return matched, limit, usedBefore, usedBefore, fmt.Errorf("%w, model=%s need=%d limit=%d used=%d", ErrSubscriptionModelQuotaInsufficient, modelName, delta, limit, usedBefore)
 	}
-	usage.AmountUsed = newUsed
+	usage.AmountUsed = actualUsedAfter
 	if err := tx.Save(usage).Error; err != nil {
 		return false, 0, 0, 0, err
 	}
@@ -1334,17 +1401,19 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					if err != nil {
 						return err
 					}
-					limit, matched, err := findSubscriptionModelLimit(plan, existing.ModelName)
+					limits, limitKey, limit, matched, err := getSubscriptionModelLimitMatch(plan, existing.ModelName)
 					if err != nil {
 						return err
 					}
 					returnValue.ModelLimitMatched = matched
 					returnValue.ModelAmountLimit = limit
-					if usage, err := ensureSubscriptionModelUsageTx(tx, &sub, existing.ModelName); err == nil && usage != nil {
-						returnValue.ModelAmountUsedBefore = usage.AmountUsed
-						returnValue.ModelAmountUsedAfter = usage.AmountUsed
-					} else if err != nil {
-						return err
+					if matched {
+						used, err := getSubscriptionModelLimitUsedTx(tx, sub.Id, limits, limitKey)
+						if err != nil {
+							return err
+						}
+						returnValue.ModelAmountUsedBefore = used
+						returnValue.ModelAmountUsedAfter = used
 					}
 				}
 				return nil
@@ -1386,7 +1455,9 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				var modelUsedAfter int64
 				var modelUsage *UserSubscriptionModelUsage
 				if modelName != "" {
-					modelAmountLimit, modelLimitMatched, err = findSubscriptionModelLimit(plan, modelName)
+					var limits map[string]int64
+					var modelLimitKey string
+					limits, modelLimitKey, modelAmountLimit, modelLimitMatched, err = getSubscriptionModelLimitMatch(plan, modelName)
 					if err != nil {
 						return err
 					}
@@ -1394,11 +1465,15 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					if err != nil {
 						return err
 					}
-					modelUsedBefore = modelUsage.AmountUsed
-					modelUsedAfter = modelUsedBefore + amount
-					if modelUsedAfter < 0 {
-						modelUsedAfter = 0
+					if modelLimitMatched {
+						modelUsedBefore, err = getSubscriptionModelLimitUsedTx(tx, sub.Id, limits, modelLimitKey)
+						if err != nil {
+							return err
+						}
+					} else {
+						modelUsedBefore = modelUsage.AmountUsed
 					}
+					modelUsedAfter = modelUsedBefore + amount
 					if modelLimitMatched && modelUsedAfter > modelAmountLimit {
 						modelQuotaInsufficient = true
 						continue
@@ -1438,7 +1513,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 						return err
 					}
 					if modelUsage != nil {
-						modelUsage.AmountUsed = modelUsedAfter
+						modelUsage.AmountUsed += amount
 						if err := tx.Save(modelUsage).Error; err != nil {
 							return err
 						}
