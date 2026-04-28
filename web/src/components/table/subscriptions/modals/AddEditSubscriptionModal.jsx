@@ -209,17 +209,17 @@ const AddEditSubscriptionModal = ({
   useEffect(() => {
     if (!visible) return;
     setModelLoading(true);
-    API.get('/api/models/?page_size=1000')
+    API.get('/api/channel/models_enabled')
       .then((res) => {
         if (!res.data?.success) {
           setModelOptions([]);
           return;
         }
-        const items = res.data?.data?.items || res.data?.data || [];
-        const options = (Array.isArray(items) ? items : [])
-          .map((item) => String(item?.model_name || '').trim())
+        const options = (Array.isArray(res.data?.data) ? res.data.data : [])
+          .map((model) => String(model || '').trim())
           .filter(Boolean)
           .filter((model, index, list) => list.indexOf(model) === index)
+          .sort((a, b) => a.localeCompare(b))
           .map((model) => ({ label: model, value: model }));
         setModelOptions(options);
       })
