@@ -23,6 +23,7 @@ import {
   Button,
   Card,
   Divider,
+  Progress,
   Select,
   Skeleton,
   Space,
@@ -325,24 +326,29 @@ const SubscriptionPlansCard = ({
       ) : (
         <Space vertical style={{ width: '100%' }} spacing={8}>
           {/* 当前订阅状态 */}
-          <Card className='!rounded-xl w-full' bodyStyle={{ padding: '12px' }}>
-            <div className='flex items-center justify-between mb-2 gap-3'>
-              <div className='flex items-center gap-2 flex-1 min-w-0'>
-                <Text strong>{t('我的订阅')}</Text>
-                {hasActiveSubscription ? (
-                  <Tag
-                    color='white'
-                    size='small'
-                    shape='circle'
-                    prefixIcon={<Badge dot type='success' />}
-                  >
-                    {activeSubscriptions.length} {t('个生效中')}
-                  </Tag>
-                ) : (
-                  <Tag color='white' size='small' shape='circle'>
-                    {t('无生效')}
-                  </Tag>
-                )}
+          <Card
+            className='!rounded-2xl w-full border border-gray-100 shadow-sm'
+            bodyStyle={{ padding: '16px' }}
+          >
+            <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+              <div className='flex flex-wrap items-center gap-2 min-w-0'>
+                <Text strong className='text-base'>
+                  {t('我的订阅')}
+                </Text>
+                <Tag
+                  color='white'
+                  size='small'
+                  shape='circle'
+                  prefixIcon={
+                    hasActiveSubscription ? (
+                      <Badge dot type='success' />
+                    ) : undefined
+                  }
+                >
+                  {hasActiveSubscription
+                    ? `${activeSubscriptions.length} ${t('个生效中')}`
+                    : t('无生效')}
+                </Tag>
                 {allSubscriptions.length > activeSubscriptions.length && (
                   <Tag color='white' size='small' shape='circle'>
                     {allSubscriptions.length - activeSubscriptions.length}{' '}
@@ -350,11 +356,12 @@ const SubscriptionPlansCard = ({
                   </Tag>
                 )}
               </div>
-              <div className='flex items-center gap-2'>
+              <div className='flex items-center gap-2 self-start sm:self-auto'>
                 <Select
                   value={displayBillingPreference}
                   onChange={onChangeBillingPreference}
                   size='small'
+                  style={{ minWidth: 122 }}
                   optionList={[
                     {
                       value: 'subscription_first',
@@ -390,19 +397,20 @@ const SubscriptionPlansCard = ({
               </div>
             </div>
             {disableSubscriptionPreference && isSubscriptionPreference && (
-              <Text type='tertiary' size='small'>
-                {t('已保存偏好为')}
-                {subscriptionPreferenceLabel}
-                {t('，当前无生效订阅，将自动使用钱包')}
-              </Text>
+              <div className='mt-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2'>
+                <Text type='tertiary' size='small'>
+                  {t('已保存偏好为')}
+                  {subscriptionPreferenceLabel}
+                  {t('，当前无生效订阅，将自动使用钱包')}
+                </Text>
+              </div>
             )}
 
             {hasAnySubscription ? (
               <>
-                <Divider margin={8} />
-                <div className='max-h-64 overflow-y-auto pr-1 semi-table-body'>
+                <Divider margin={12} />
+                <div className='max-h-72 overflow-y-auto pr-1 semi-table-body space-y-3'>
                   {allSubscriptions.map((sub, subIndex) => {
-                    const isLast = subIndex === allSubscriptions.length - 1;
                     const subscription = sub.subscription;
                     const totalAmount = Number(subscription?.amount_total || 0);
                     const usedAmount = Number(subscription?.amount_used || 0);
@@ -423,11 +431,17 @@ const SubscriptionPlansCard = ({
                       getSubscriptionModelLimitEntries(sub);
 
                     return (
-                      <div key={subscription?.id || subIndex}>
-                        {/* 订阅概要 */}
-                        <div className='flex items-center justify-between text-xs mb-2'>
-                          <div className='flex items-center gap-2'>
-                            <span className='font-medium'>
+                      <div
+                        key={subscription?.id || subIndex}
+                        className={`rounded-xl border p-3 ${
+                          isActive
+                            ? 'border-green-100 bg-green-50/40'
+                            : 'border-gray-100 bg-gray-50/60'
+                        }`}
+                      >
+                        <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                          <div className='flex min-w-0 items-center gap-2'>
+                            <span className='truncate font-medium text-gray-900'>
                               {planTitle
                                 ? `${planTitle} · ${t('订阅')} #${subscription?.id}`
                                 : `${t('订阅')} #${subscription?.id}`}
@@ -452,89 +466,128 @@ const SubscriptionPlansCard = ({
                             )}
                           </div>
                           {isActive && (
-                            <span className='text-gray-500'>
+                            <span className='shrink-0 rounded-full bg-white px-2 py-1 text-xs text-gray-500 shadow-sm'>
                               {t('剩余')} {remainDays} {t('天')}
                             </span>
                           )}
                         </div>
-                        <div className='text-xs text-gray-500 mb-2'>
-                          {isActive
-                            ? t('至')
-                            : isCancelled
-                              ? t('作废于')
-                              : t('过期于')}{' '}
-                          {new Date(
-                            (subscription?.end_time || 0) * 1000,
-                          ).toLocaleString()}
-                        </div>
-                        {isActive && subscription?.next_reset_time > 0 && (
-                          <div className='text-xs text-gray-500 mb-2'>
-                            {t('下一次重置')}:{' '}
+
+                        <div className='mt-2 grid grid-cols-1 gap-1 text-xs text-gray-500 sm:grid-cols-2'>
+                          <div>
+                            {isActive
+                              ? t('至')
+                              : isCancelled
+                                ? t('作废于')
+                                : t('过期于')}{' '}
                             {new Date(
-                              subscription.next_reset_time * 1000,
+                              (subscription?.end_time || 0) * 1000,
                             ).toLocaleString()}
                           </div>
-                        )}
-                        <div className='text-xs text-gray-500 mb-2'>
-                          {t('总额度')}:{' '}
-                          {totalAmount > 0 ? (
-                            <Tooltip
-                              content={`${t('原生额度')}：${usedAmount}/${totalAmount} · ${t('剩余')} ${remainAmount}`}
-                            >
-                              <span>
-                                {renderQuota(usedAmount)}/
-                                {renderQuota(totalAmount)} · {t('剩余')}{' '}
-                                {renderQuota(remainAmount)}
-                              </span>
-                            </Tooltip>
-                          ) : (
-                            t('不限')
-                          )}
-                          {totalAmount > 0 && (
-                            <span className='ml-2'>
-                              {t('已用')} {usagePercent}%
-                            </span>
+                          {isActive && subscription?.next_reset_time > 0 && (
+                            <div className='sm:text-right'>
+                              {t('下一次重置')}:{' '}
+                              {new Date(
+                                subscription.next_reset_time * 1000,
+                              ).toLocaleString()}
+                            </div>
                           )}
                         </div>
-                        {modelLimitEntries.length > 0 && (
-                          <div className='text-xs text-gray-500 mb-2 space-y-1'>
-                            <div>{t('模型用量')}:</div>
-                            {modelLimitEntries.map(
-                              ({ modelName, limit, used }) => {
-                                const remain =
-                                  limit > 0 ? Math.max(0, limit - used) : 0;
-                                const label =
-                                  modelName === '*' ? t('默认模型') : modelName;
-                                const remainingPercent =
-                                  limit > 0
-                                    ? Math.min(
-                                        100,
-                                        Math.round((remain / limit) * 100),
-                                      )
-                                    : 0;
-                                return (
-                                  <div
-                                    key={modelName}
-                                    className='flex items-center justify-between gap-3'
-                                  >
-                                    <span className='truncate'>{label}</span>
-                                    <span className='shrink-0'>
-                                      {t('剩余')} {remainingPercent}%
-                                    </span>
-                                  </div>
-                                );
-                              },
+
+                        <div className='mt-3 rounded-lg border border-gray-100 bg-white/80 p-2'>
+                          <div className='flex items-center justify-between gap-3 text-xs text-gray-500'>
+                            <span>{t('总额度')}</span>
+                            {totalAmount > 0 ? (
+                              <Tooltip
+                                content={`${t('原生额度')}：${usedAmount}/${totalAmount} · ${t('剩余')} ${remainAmount}`}
+                              >
+                                <span className='shrink-0'>
+                                  {renderQuota(usedAmount)}/
+                                  {renderQuota(totalAmount)} · {t('已用')}{' '}
+                                  {usagePercent}%
+                                </span>
+                              </Tooltip>
+                            ) : (
+                              <span className='shrink-0'>{t('不限')}</span>
                             )}
                           </div>
+                          {totalAmount > 0 && (
+                            <Progress
+                              percent={Math.min(100, usagePercent)}
+                              showInfo={false}
+                              stroke={
+                                usagePercent >= 90
+                                  ? 'var(--semi-color-danger)'
+                                  : usagePercent >= 70
+                                    ? 'var(--semi-color-warning)'
+                                    : 'var(--semi-color-success)'
+                              }
+                              aria-label='subscription quota usage'
+                              style={{ marginTop: 6, marginBottom: 0 }}
+                            />
+                          )}
+                        </div>
+
+                        {modelLimitEntries.length > 0 && (
+                          <div className='mt-2 rounded-lg border border-gray-100 bg-white/80 p-2 text-xs text-gray-500'>
+                            <div className='mb-2 font-medium text-gray-600'>
+                              {t('模型用量')}
+                            </div>
+                            <div className='space-y-2'>
+                              {modelLimitEntries.map(
+                                ({ modelName, limit, used }) => {
+                                  const remain =
+                                    limit > 0 ? Math.max(0, limit - used) : 0;
+                                  const label =
+                                    modelName === '*'
+                                      ? t('默认模型')
+                                      : modelName;
+                                  const remainingPercent =
+                                    limit > 0
+                                      ? Math.min(
+                                          100,
+                                          Math.round((remain / limit) * 100),
+                                        )
+                                      : 0;
+                                  return (
+                                    <div key={modelName}>
+                                      <div className='flex items-center justify-between gap-3'>
+                                        <span className='truncate'>
+                                          {label}
+                                        </span>
+                                        <span className='shrink-0 font-medium text-gray-700'>
+                                          {t('剩余')} {remainingPercent}%
+                                        </span>
+                                      </div>
+                                      <Progress
+                                        percent={remainingPercent}
+                                        showInfo={false}
+                                        stroke={
+                                          remainingPercent <= 20
+                                            ? 'var(--semi-color-danger)'
+                                            : remainingPercent <= 50
+                                              ? 'var(--semi-color-warning)'
+                                              : 'var(--semi-color-success)'
+                                        }
+                                        aria-label={`${label} remaining quota`}
+                                        style={{
+                                          marginTop: 4,
+                                          marginBottom: 0,
+                                        }}
+                                      />
+                                    </div>
+                                  );
+                                },
+                              )}
+                            </div>
+                          </div>
                         )}
-                        {!isLast && <Divider margin={12} />}
                       </div>
                     );
                   })}
                 </div>
               </>
             ) : (
-              <div className='text-xs text-gray-500'>
+              <div className='mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-center text-xs text-gray-500'>
                 {t('购买套餐后即可享受模型权益')}
               </div>
             )}
