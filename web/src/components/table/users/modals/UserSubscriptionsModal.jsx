@@ -22,10 +22,12 @@ import {
   Button,
   Empty,
   Modal,
+  Progress,
   Select,
   SideSheet,
   Space,
   Tag,
+  Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
 import { IconPlusCircle } from '@douyinfe/semi-icons';
@@ -33,7 +35,7 @@ import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
-import { API, showError, showSuccess } from '../../../../helpers';
+import { API, renderQuota, showError, showSuccess } from '../../../../helpers';
 import { convertUSDToCurrency } from '../../../../helpers/render';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import CardTable from '../../../common/ui/CardTable';
@@ -70,6 +72,77 @@ function renderStatusTag(sub, t) {
     <Tag color='grey' shape='circle' size='small'>
       {t('已过期')}
     </Tag>
+  );
+}
+
+function getModelLimitEntries(record) {
+  const limits = record?.model_amount_limits;
+  if (!limits || typeof limits !== 'object') return [];
+  const usages = record?.model_amount_limit_usages || {};
+  return Object.entries(limits)
+    .sort(([a], [b]) => {
+      if (a === '*') return 1;
+      if (b === '*') return -1;
+      const aWildcard = a.endsWith('*');
+      const bWildcard = b.endsWith('*');
+      if (aWildcard !== bWildcard) return aWildcard ? 1 : -1;
+      return a.localeCompare(b);
+    })
+    .map(([modelName, limit]) => ({
+      modelName,
+      limit: Number(limit || 0),
+      used: Number(usages?.[modelName] || 0),
+    }));
+}
+
+function renderModelLimitUsage(record, t) {
+  const entries = getModelLimitEntries(record);
+  if (entries.length === 0) {
+    return <Text type='tertiary'>{t('未配置')}</Text>;
+  }
+
+  return (
+    <div className='space-y-2 min-w-[260px]'>
+      {entries.map(({ modelName, limit, used }) => {
+        const label = modelName === '*' ? t('其他模型') : modelName;
+        const remain = limit > 0 ? Math.max(0, limit - used) : 0;
+        const remainingPercent =
+          limit > 0 ? Math.min(100, Math.round((remain / limit) * 100)) : 0;
+        const usedPercent =
+          limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+        const stroke =
+          remainingPercent <= 20
+            ? 'var(--semi-color-danger)'
+            : remainingPercent <= 50
+              ? 'var(--semi-color-warning)'
+              : 'var(--semi-color-success)';
+
+        return (
+          <div key={modelName} className='rounded-md bg-gray-50 px-2 py-1.5'>
+            <div className='flex items-center justify-between gap-2 text-xs'>
+              <Tooltip content={modelName}>
+                <span className='truncate font-medium text-gray-700'>
+                  {label}
+                </span>
+              </Tooltip>
+              <span className='shrink-0 text-gray-500'>
+                {t('剩余')} {remainingPercent}%
+              </span>
+            </div>
+            <Progress
+              percent={usedPercent}
+              showInfo={false}
+              stroke={stroke}
+              aria-label={`${label} usage`}
+              style={{ marginTop: 4, marginBottom: 0 }}
+            />
+            <div className='mt-1 text-[11px] text-gray-500'>
+              {t('已用')} {renderQuota(used)} / {renderQuota(limit)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -310,6 +383,12 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
             </Text>
           );
         },
+      },
+      {
+        title: t('模型限额'),
+        key: 'model_limits',
+        width: 300,
+        render: (_, record) => renderModelLimitUsage(record, t),
       },
       {
         title: '',
