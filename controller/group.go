@@ -38,15 +38,17 @@ func GetUserGroups(c *gin.Context) {
 		// UserUsableGroups contains the groups that the user can use
 		if desc, ok := userUsableGroups[groupName]; ok {
 			usableGroups[groupName] = map[string]interface{}{
-				"ratio": service.GetUserGroupRatio(userGroup, groupName),
-				"desc":  desc,
+				"ratio":        service.GetUserGroupRatio(userGroup, groupName),
+				"desc":         desc,
+				"billing_type": ratio_setting.GetGroupBillingType(groupName),
 			}
 		}
 	}
 	if _, ok := userUsableGroups["auto"]; ok {
 		usableGroups["auto"] = map[string]interface{}{
-			"ratio": "自动",
-			"desc":  setting.GetUsableGroupDescription("auto"),
+			"ratio":        "自动",
+			"desc":         setting.GetUsableGroupDescription("auto"),
+			"billing_type": ratio_setting.GroupBillingTypeDefault,
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{

@@ -67,6 +67,9 @@ const EditTokenModal = (props) => {
   const formApiRef = useRef(null);
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [billingPreference, setBillingPreference] =
+    useState('subscription_first');
+  const [forcedBillingPreference, setForcedBillingPreference] = useState('');
   const [showQuotaInput, setShowQuotaInput] = useState(false);
   const isEdit = props.editingToken.id !== undefined;
 
@@ -141,6 +144,7 @@ const EditTokenModal = (props) => {
         label: info.desc,
         value: group,
         ratio: info.ratio,
+        billing_type: info.billing_type || 'default',
       }));
       if (statusState?.status?.default_use_auto_group) {
         if (localGroupOptions.some((group) => group.value === 'auto')) {
@@ -153,6 +157,20 @@ const EditTokenModal = (props) => {
       // }
     } else {
       showError(t(message));
+    }
+  };
+
+  const loadBillingPreference = async () => {
+    try {
+      let res = await API.get(`/api/subscription/self`);
+      const { success, data } = res.data;
+      if (success) {
+        setBillingPreference(data?.billing_preference || 'subscription_first');
+        setForcedBillingPreference(data?.forced_billing_preference || '');
+      }
+    } catch {
+      setBillingPreference('subscription_first');
+      setForcedBillingPreference('');
     }
   };
 
@@ -181,6 +199,7 @@ const EditTokenModal = (props) => {
                   label: data.group,
                   value: data.group,
                   ratio: t('已隐藏'),
+                  billing_type: 'unknown',
                 },
                 ...prev,
               ],
@@ -203,6 +222,7 @@ const EditTokenModal = (props) => {
     }
     loadModels();
     loadGroups();
+    loadBillingPreference();
   }, [props.editingToken.id]);
 
   useEffect(() => {
@@ -227,6 +247,94 @@ const EditTokenModal = (props) => {
       );
     }
     return result;
+  };
+
+  const getBillingPreferenceLabel = (preference) => {
+    switch (preference) {
+      case 'wallet_first':
+        return t('优先钱包');
+      case 'subscription_only':
+        return t('仅用订阅');
+      case 'wallet_only':
+        return t('仅用钱包');
+      case 'subscription_first':
+      default:
+        return t('优先订阅');
+    }
+  };
+
+  const getTokenBillingHint = (groupValue) => {
+    if (groupValue === 'auto') {
+      return {
+        color: 'blue',
+        label: t('按 auto 实际分组'),
+        detail: `${t('请求时由自动分组结果决定扣费方式；未强制时按账户偏好')}：${getBillingPreferenceLabel(billingPreference)}`,
+      };
+    }
+
+    const selectedGroup = groups.find((group) => group.value === groupValue);
+    const billingType = selectedGroup?.billing_type || 'default';
+    if (billingType === 'subscription_only') {
+      return {
+        color: 'green',
+        label: t('仅用订阅'),
+        detail: t('该分组强制使用订阅扣费，钱包不会参与扣费'),
+      };
+    }
+    if (billingType === 'wallet_only') {
+      return {
+        color: 'orange',
+        label: t('仅用钱包'),
+        detail: t('该分组强制使用钱包扣费，订阅不会参与扣费'),
+      };
+    }
+    if (billingType === 'unknown') {
+      return {
+        color: 'grey',
+        label: t('按后台分组配置'),
+        detail: t('该分组当前不可新建选择，扣费方式以后台实际配置为准'),
+      };
+    }
+
+    if (!groupValue) {
+      if (forcedBillingPreference === 'subscription_only') {
+        return {
+          color: 'green',
+          label: t('仅用订阅'),
+          detail: t('未选择分组时使用用户默认分组，该分组强制使用订阅扣费'),
+        };
+      }
+      if (forcedBillingPreference === 'wallet_only') {
+        return {
+          color: 'orange',
+          label: t('仅用钱包'),
+          detail: t('未选择分组时使用用户默认分组，该分组强制使用钱包扣费'),
+        };
+      }
+    }
+
+    return {
+      color: 'blue',
+      label: getBillingPreferenceLabel(billingPreference),
+      detail: groupValue
+        ? t('该分组未强制扣费方式，按账户扣费偏好执行')
+        : t('未选择分组时使用用户默认分组，未强制时按账户扣费偏好执行'),
+    };
+  };
+
+  const renderBillingHint = (groupValue) => {
+    const hint = getTokenBillingHint(groupValue);
+    return (
+      <div className='-mt-2 mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2'>
+        <Space spacing={8} wrap>
+          <Text type='secondary'>{t('扣费顺序')}</Text>
+          <Tag color={hint.color} shape='circle'>
+            {hint.label}
+          </Tag>
+        </Space>
+        <div className='mt-1 text-xs text-gray-500'>{hint.detail}</div>
+      </div>
+    );
   };
 
   const submit = async (values) => {
@@ -402,9 +510,7 @@ const EditTokenModal = (props) => {
                         field='group'
                         label={t('令牌分组')}
                         placeholder={t('令牌分组，默认为用户的分组')}
-                        extraText={t(
-                          '实际扣费以当前 Token 所选分组计算后的价格为准',
-                        )}
+                        extraText={t('分组会影响模型价格、可用模型和扣费方式')}
                         optionList={groups}
                         renderOptionItem={renderGroupOption}
                         filter={(input, option) => {
@@ -423,13 +529,12 @@ const EditTokenModal = (props) => {
                         placeholder={t('管理员未设置用户可选分组')}
                         disabled
                         label={t('令牌分组')}
-                        extraText={t(
-                          '实际扣费以当前 Token 所选分组计算后的价格为准',
-                        )}
+                        extraText={t('分组会影响模型价格、可用模型和扣费方式')}
                         style={{ width: '100%' }}
                       />
                     )}
                   </Col>
+                  <Col span={24}>{renderBillingHint(values.group)}</Col>
                   <Col
                     span={24}
                     style={{
