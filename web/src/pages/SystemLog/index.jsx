@@ -46,6 +46,8 @@ const { Text, Title } = Typography;
 
 const defaultTailLines = 500;
 
+const pad2 = (value) => String(value).padStart(2, '0');
+
 const formatBytes = (value) => {
   const bytes = Number(value);
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
@@ -59,11 +61,43 @@ const formatBytes = (value) => {
   return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 };
 
+const formatDateTime = (date) =>
+  `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+    date.getDate(),
+  )} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(
+    date.getSeconds(),
+  )}`;
+
+const parseLogFileTime = (name) => {
+  const match = /^oneapi-(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\.log$/.exec(
+    name || '',
+  );
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second] = match;
+  const date = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  );
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
 const formatTime = (value) => {
   if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleString();
+  return formatDateTime(date);
+};
+
+const getLogFileDisplayTime = (file) => {
+  const logFileTime = parseLogFileTime(file?.name);
+  if (logFileTime) {
+    return formatDateTime(logFileTime);
+  }
+  return formatTime(file?.mod_time);
 };
 
 const SystemLog = () => {
@@ -91,11 +125,13 @@ const SystemLog = () => {
 
   const fileOptions = useMemo(
     () =>
-      files.map((file) => ({
-        label: `${file.name} · ${formatBytes(file.size)}`,
+      files.map((file, index) => ({
+        label: `${index === 0 ? `${t('最新')} · ` : ''}${getLogFileDisplayTime(
+          file,
+        )} · ${file.name} · ${formatBytes(file.size)}`,
         value: file.name,
       })),
-    [files],
+    [files, t],
   );
 
   const scrollToBottom = () => {
@@ -214,9 +250,9 @@ const SystemLog = () => {
                   </Tag>
                   <span>{`${t('日志文件')}：${files.length}`}</span>
                   {selectedFileInfo && (
-                    <span>{`${formatBytes(selectedFileInfo.size)} · ${formatTime(
-                      selectedFileInfo.mod_time,
-                    )}`}</span>
+                    <span>{`${formatBytes(
+                      selectedFileInfo.size,
+                    )} · ${getLogFileDisplayTime(selectedFileInfo)}`}</span>
                   )}
                 </div>
               </div>
