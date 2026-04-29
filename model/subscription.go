@@ -409,6 +409,19 @@ type SubscriptionSummary struct {
 	ModelAmountLimitUsages map[string]int64  `json:"model_amount_limit_usages,omitempty"`
 }
 
+type SubscriptionUserInfo struct {
+	Id          int    `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name,omitempty"`
+	Email       string `json:"email,omitempty"`
+	Group       string `json:"group,omitempty"`
+}
+
+type SubscriptionSummaryWithUser struct {
+	SubscriptionSummary
+	User *SubscriptionUserInfo `json:"user,omitempty"`
+}
+
 func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
 	if plan == nil {
 		return 0, errors.New("plan is nil")
@@ -874,6 +887,69 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 		return nil, err
 	}
 	return buildSubscriptionSummaries(subs), nil
+}
+
+// GetAllUserSubscriptionsByPlan returns all subscriptions for a plan with safe user metadata.
+func GetAllUserSubscriptionsByPlan(planId int) ([]SubscriptionSummaryWithUser, error) {
+	if planId <= 0 {
+		return nil, errors.New("invalid planId")
+	}
+	var subs []UserSubscription
+	err := DB.Where("plan_id = ?", planId).
+		Order("end_time desc, id desc").
+		Find(&subs).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(subs) == 0 {
+		return []SubscriptionSummaryWithUser{}, nil
+	}
+
+	userIds := make([]int, 0, len(subs))
+	seenUsers := make(map[int]struct{})
+	for _, sub := range subs {
+		if sub.UserId <= 0 {
+			continue
+		}
+		if _, ok := seenUsers[sub.UserId]; ok {
+			continue
+		}
+		seenUsers[sub.UserId] = struct{}{}
+		userIds = append(userIds, sub.UserId)
+	}
+
+	userMap := make(map[int]SubscriptionUserInfo, len(userIds))
+	if len(userIds) > 0 {
+		var users []User
+		if err := DB.Where("id IN ?", userIds).Find(&users).Error; err != nil {
+			return nil, err
+		}
+		for _, user := range users {
+			userMap[user.Id] = SubscriptionUserInfo{
+				Id:          user.Id,
+				Username:    user.Username,
+				DisplayName: user.DisplayName,
+				Email:       user.Email,
+				Group:       user.Group,
+			}
+		}
+	}
+
+	summaries := buildSubscriptionSummaries(subs)
+	result := make([]SubscriptionSummaryWithUser, 0, len(summaries))
+	for _, summary := range summaries {
+		item := SubscriptionSummaryWithUser{
+			SubscriptionSummary: summary,
+		}
+		if summary.Subscription != nil {
+			if user, ok := userMap[summary.Subscription.UserId]; ok {
+				userCopy := user
+				item.User = &userCopy
+			}
+		}
+		result = append(result, item)
+	}
+	return result, nil
 }
 
 func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {

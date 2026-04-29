@@ -326,6 +326,67 @@ func TestGetAllUserSubscriptionsIncludesModelLimitUsageSummary(t *testing.T) {
 	assert.EqualValues(t, 300, summaries[0].ModelAmountLimitUsages["*"])
 }
 
+func TestGetAllUserSubscriptionsByPlanIncludesUsersAndModelLimitUsage(t *testing.T) {
+	truncateTables(t)
+
+	require.NoError(t, DB.Create(&User{
+		Id:          513,
+		Username:    "plan_usage_user_a",
+		DisplayName: "Plan User A",
+		Email:       "plan-user-a@example.com",
+		Group:       "default",
+		AffCode:     "plan_usage_a",
+		Status:      common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, DB.Create(&User{
+		Id:       514,
+		Username: "plan_usage_user_b",
+		Group:    "vip",
+		AffCode:  "plan_usage_b",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	insertSubscriptionLimitPlan(t, 613, 0, `{"gpt-5.5*":1000,"*":500}`, SubscriptionResetNever)
+	insertSubscriptionLimitPlan(t, 614, 0, `{"gpt-other":1000}`, SubscriptionResetNever)
+	insertActiveUserSubscriptionForLimitTest(t, 713, 513, 613, 0, 200)
+	insertActiveUserSubscriptionForLimitTest(t, 714, 514, 613, 0, 300)
+	insertActiveUserSubscriptionForLimitTest(t, 715, 514, 614, 0, 400)
+	require.NoError(t, DB.Create(&UserSubscriptionModelUsage{
+		UserSubscriptionId: 713,
+		UserId:             513,
+		ModelName:          "gpt-5.5-mini",
+		AmountUsed:         200,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscriptionModelUsage{
+		UserSubscriptionId: 714,
+		UserId:             514,
+		ModelName:          "claude-sonnet-4",
+		AmountUsed:         300,
+	}).Error)
+
+	summaries, err := GetAllUserSubscriptionsByPlan(613)
+	require.NoError(t, err)
+	require.Len(t, summaries, 2)
+
+	bySubId := map[int]SubscriptionSummaryWithUser{}
+	for _, summary := range summaries {
+		require.NotNil(t, summary.Subscription)
+		bySubId[summary.Subscription.Id] = summary
+	}
+
+	require.NotNil(t, bySubId[713].User)
+	assert.Equal(t, "plan_usage_user_a", bySubId[713].User.Username)
+	assert.Equal(t, "Plan User A", bySubId[713].User.DisplayName)
+	assert.Equal(t, "default", bySubId[713].User.Group)
+	assert.EqualValues(t, 200, bySubId[713].ModelAmountLimitUsages["gpt-5.5*"])
+	assert.EqualValues(t, 0, bySubId[713].ModelAmountLimitUsages["*"])
+
+	require.NotNil(t, bySubId[714].User)
+	assert.Equal(t, "plan_usage_user_b", bySubId[714].User.Username)
+	assert.Equal(t, "vip", bySubId[714].User.Group)
+	assert.EqualValues(t, 0, bySubId[714].ModelAmountLimitUsages["gpt-5.5*"])
+	assert.EqualValues(t, 300, bySubId[714].ModelAmountLimitUsages["*"])
+}
+
 func TestGetAllUserSubscriptionsGroupsPrefixWildcardUsageSummary(t *testing.T) {
 	truncateTables(t)
 

@@ -24,6 +24,7 @@ import SubscriptionsTable from './SubscriptionsTable';
 import SubscriptionsActions from './SubscriptionsActions';
 import SubscriptionsDescription from './SubscriptionsDescription';
 import AddEditSubscriptionModal from './modals/AddEditSubscriptionModal';
+import PlanUserUsageModal from './modals/PlanUserUsageModal';
 import { useSubscriptionsData } from '../../../hooks/subscriptions/useSubscriptionsData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -38,8 +39,11 @@ const SubscriptionsPage = () => {
   const {
     showEdit,
     editingPlan,
+    showUserUsage,
+    usagePlan,
     sheetPlacement,
     closeEdit,
+    closeUserUsage,
     refresh,
     openCreate,
     compactMode,
@@ -55,6 +59,12 @@ const SubscriptionsPage = () => {
         editingPlan={editingPlan}
         placement={sheetPlacement}
         refresh={refresh}
+        t={t}
+      />
+      <PlanUserUsageModal
+        visible={showUserUsage}
+        onCancel={closeUserUsage}
+        planRecord={usagePlan}
         t={t}
       />
 

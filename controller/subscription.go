@@ -422,6 +422,20 @@ func AdminListUserSubscriptions(c *gin.Context) {
 	common.ApiSuccess(c, subs)
 }
 
+func AdminListPlanUserSubscriptions(c *gin.Context) {
+	planId, _ := strconv.Atoi(c.Param("id"))
+	if planId <= 0 {
+		common.ApiErrorMsg(c, "无效的套餐ID")
+		return
+	}
+	subs, err := model.GetAllUserSubscriptionsByPlan(planId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, subs)
+}
+
 type AdminCreateUserSubscriptionRequest struct {
 	PlanId int `json:"plan_id"`
 }

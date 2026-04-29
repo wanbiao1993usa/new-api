@@ -38,6 +38,8 @@ export const useSubscriptionsData = () => {
   const [showEdit, setShowEdit] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
   const [sheetPlacement, setSheetPlacement] = useState('left'); // 'left' | 'right'
+  const [showUserUsage, setShowUserUsage] = useState(false);
+  const [usagePlan, setUsagePlan] = useState(null);
 
   // Load subscription plans
   const loadPlans = async () => {
@@ -118,6 +120,16 @@ export const useSubscriptionsData = () => {
     setShowEdit(true);
   };
 
+  const closeUserUsage = () => {
+    setShowUserUsage(false);
+    setUsagePlan(null);
+  };
+
+  const openUserUsage = (planRecord) => {
+    setUsagePlan(planRecord);
+    setShowUserUsage(true);
+  };
+
   // Initialize data on component mount
   useEffect(() => {
     loadPlans();
@@ -139,6 +151,8 @@ export const useSubscriptionsData = () => {
     showEdit,
     editingPlan,
     sheetPlacement,
+    showUserUsage,
+    usagePlan,
     setShowEdit,
     setEditingPlan,
 
@@ -159,6 +173,8 @@ export const useSubscriptionsData = () => {
     closeEdit,
     openCreate,
     openEdit,
+    closeUserUsage,
+    openUserUsage,
 
     // Translation
     t,
