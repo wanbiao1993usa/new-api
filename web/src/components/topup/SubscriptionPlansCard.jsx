@@ -52,7 +52,17 @@ function getEpayMethods(payMethods = []) {
 function getVisibleModelLimits(planDTO) {
   const limits = planDTO?.visible_model_amount_limits;
   if (!limits || typeof limits !== 'object') return [];
-  return Object.entries(limits);
+  return Object.entries(limits).sort(([a], [b]) => compareModelLimitKeys(a, b));
+}
+
+function compareModelLimitKeys(a, b) {
+  if (a === b) return 0;
+  if (a === '*') return 1;
+  if (b === '*') return -1;
+  const aWildcard = a.endsWith('*');
+  const bWildcard = b.endsWith('*');
+  if (aWildcard !== bWildcard) return aWildcard ? 1 : -1;
+  return a.localeCompare(b);
 }
 
 function getSubscriptionModelLimitEntries(subscriptionSummary) {
@@ -60,11 +70,7 @@ function getSubscriptionModelLimitEntries(subscriptionSummary) {
   if (!limits || typeof limits !== 'object') return [];
   const usages = subscriptionSummary?.model_amount_limit_usages || {};
   return Object.entries(limits)
-    .sort(([a], [b]) => {
-      if (a === '*') return -1;
-      if (b === '*') return 1;
-      return a.localeCompare(b);
-    })
+    .sort(([a], [b]) => compareModelLimitKeys(a, b))
     .map(([modelName, limit]) => ({
       modelName,
       limit: Number(limit || 0),

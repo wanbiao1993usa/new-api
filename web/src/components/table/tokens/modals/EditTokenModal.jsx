@@ -70,6 +70,8 @@ const EditTokenModal = (props) => {
   const [billingPreference, setBillingPreference] =
     useState('subscription_first');
   const [forcedBillingPreference, setForcedBillingPreference] = useState('');
+  const [billingPreferenceLoadFailed, setBillingPreferenceLoadFailed] =
+    useState(false);
   const [showQuotaInput, setShowQuotaInput] = useState(false);
   const isEdit = props.editingToken.id !== undefined;
 
@@ -167,10 +169,14 @@ const EditTokenModal = (props) => {
       if (success) {
         setBillingPreference(data?.billing_preference || 'subscription_first');
         setForcedBillingPreference(data?.forced_billing_preference || '');
+        setBillingPreferenceLoadFailed(false);
+      } else {
+        setForcedBillingPreference('');
+        setBillingPreferenceLoadFailed(true);
       }
     } catch {
-      setBillingPreference('subscription_first');
       setForcedBillingPreference('');
+      setBillingPreferenceLoadFailed(true);
     }
   };
 
@@ -266,9 +272,11 @@ const EditTokenModal = (props) => {
   const getTokenBillingHint = (groupValue) => {
     if (groupValue === 'auto') {
       return {
-        color: 'blue',
+        color: billingPreferenceLoadFailed ? 'grey' : 'blue',
         label: t('按 auto 实际分组'),
-        detail: `${t('请求时由自动分组结果决定扣费方式；未强制时按账户偏好')}：${getBillingPreferenceLabel(billingPreference)}`,
+        detail: billingPreferenceLoadFailed
+          ? t('扣费偏好加载失败；请求时由自动分组结果和后台实际规则决定')
+          : `${t('请求时由自动分组结果决定扣费方式；未强制时按账户偏好')}：${getBillingPreferenceLabel(billingPreference)}`,
       };
     }
 
@@ -311,6 +319,16 @@ const EditTokenModal = (props) => {
           detail: t('未选择分组时使用用户默认分组，该分组强制使用钱包扣费'),
         };
       }
+    }
+
+    if (billingPreferenceLoadFailed) {
+      return {
+        color: 'grey',
+        label: t('按后台实际规则'),
+        detail: groupValue
+          ? t('扣费偏好加载失败，该分组实际扣费以后端为准')
+          : t('扣费偏好加载失败，默认分组实际扣费以后端为准'),
+      };
     }
 
     return {

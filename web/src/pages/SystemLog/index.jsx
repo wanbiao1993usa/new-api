@@ -300,7 +300,7 @@ const SystemLog = () => {
             />
             <Input
               prefix={<Search size={16} />}
-              placeholder={t('关键词过滤')}
+              placeholder={t('关键词过滤（仅当前尾部行）')}
               value={keyword}
               showClear
               onChange={setKeyword}
