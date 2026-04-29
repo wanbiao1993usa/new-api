@@ -66,6 +66,7 @@ export default function SettingsSidebarModulesAdmin(props) {
       redemption: true,
       user: true,
       subscription: true,
+      system_log: true,
       setting: true,
     },
   });
@@ -127,6 +128,7 @@ export default function SettingsSidebarModulesAdmin(props) {
         redemption: true,
         user: true,
         subscription: true,
+        system_log: true,
         setting: true,
       },
     };
@@ -174,7 +176,14 @@ export default function SettingsSidebarModulesAdmin(props) {
     if (props.options && props.options.SidebarModulesAdmin) {
       try {
         const modules = JSON.parse(props.options.SidebarModulesAdmin);
-        setSidebarModulesAdmin(modules);
+        setSidebarModulesAdmin((current) => ({
+          ...current,
+          ...modules,
+          chat: { ...current.chat, ...(modules.chat || {}) },
+          console: { ...current.console, ...(modules.console || {}) },
+          personal: { ...current.personal, ...(modules.personal || {}) },
+          admin: { ...current.admin, ...(modules.admin || {}) },
+        }));
       } catch (error) {
         // 使用默认配置
         const defaultModules = {
@@ -196,6 +205,7 @@ export default function SettingsSidebarModulesAdmin(props) {
             redemption: true,
             user: true,
             subscription: true,
+            system_log: true,
             setting: true,
           },
         };
@@ -264,6 +274,11 @@ export default function SettingsSidebarModulesAdmin(props) {
           key: 'subscription',
           title: t('订阅管理'),
           description: t('订阅套餐管理'),
+        },
+        {
+          key: 'system_log',
+          title: t('系统日志'),
+          description: t('服务运行日志查看'),
         },
         {
           key: 'redemption',

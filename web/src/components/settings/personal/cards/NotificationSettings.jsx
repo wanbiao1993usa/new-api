@@ -88,6 +88,7 @@ const NotificationSettings = ({
       models: true,
       deployment: true,
       subscription: true,
+      system_log: true,
       redemption: true,
       user: true,
       setting: true,
@@ -172,6 +173,7 @@ const NotificationSettings = ({
         models: true,
         deployment: true,
         subscription: true,
+        system_log: true,
         redemption: true,
         user: true,
         setting: true,
@@ -207,7 +209,14 @@ const NotificationSettings = ({
           } else {
             userConf = userRes.data.data.sidebar_modules;
           }
-          setSidebarModulesUser(userConf);
+          setSidebarModulesUser((current) => ({
+            ...current,
+            ...userConf,
+            chat: { ...current.chat, ...(userConf.chat || {}) },
+            console: { ...current.console, ...(userConf.console || {}) },
+            personal: { ...current.personal, ...(userConf.personal || {}) },
+            admin: { ...current.admin, ...(userConf.admin || {}) },
+          }));
         }
       } catch (error) {
         console.error('加载边栏配置失败:', error);
@@ -303,6 +312,11 @@ const NotificationSettings = ({
           key: 'subscription',
           title: t('订阅管理'),
           description: t('订阅套餐管理'),
+        },
+        {
+          key: 'system_log',
+          title: t('系统日志'),
+          description: t('服务运行日志查看'),
         },
         {
           key: 'redemption',
