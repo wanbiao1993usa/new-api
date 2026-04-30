@@ -76,6 +76,11 @@ function renderStatusTag(sub, t) {
   );
 }
 
+function clampPercent(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
 function compareModelLimitKeys(a, b) {
   if (a === b) return 0;
   if (a === '*') return 1;
@@ -86,17 +91,172 @@ function compareModelLimitKeys(a, b) {
   return a.localeCompare(b);
 }
 
+function getModelLimitSortRank(modelName) {
+  if (modelName === '*') return 2;
+  if (modelName.endsWith('*')) return 1;
+  return 0;
+}
+
+function compareModelLimitEntries(a, b) {
+  const rankDiff =
+    getModelLimitSortRank(a.modelName) - getModelLimitSortRank(b.modelName);
+  if (rankDiff !== 0) return rankDiff;
+  if (a.limit !== b.limit) return b.limit - a.limit;
+  return compareModelLimitKeys(a.modelName, b.modelName);
+}
+
+function getRecordUserId(record) {
+  return Number(record?.subscription?.user_id || record?.user?.id || 0);
+}
+
+function compareSubscriptionUsageRecords(a, b) {
+  const amountUsedDiff = Number(b?.subscription?.amount_used || 0) -
+    Number(a?.subscription?.amount_used || 0);
+  if (amountUsedDiff !== 0) return amountUsedDiff;
+
+  const aStatus = getSubscriptionStatus(a?.subscription);
+  const bStatus = getSubscriptionStatus(b?.subscription);
+  if (aStatus !== bStatus) {
+    if (aStatus === 'active') return -1;
+    if (bStatus === 'active') return 1;
+  }
+
+  const endTimeDiff = Number(b?.subscription?.end_time || 0) -
+    Number(a?.subscription?.end_time || 0);
+  if (endTimeDiff !== 0) return endTimeDiff;
+
+  return Number(b?.subscription?.id || 0) - Number(a?.subscription?.id || 0);
+}
+
+function buildUserUsageSortMeta(records) {
+  const meta = new Map();
+
+  (records || []).forEach((record) => {
+    const userId = getRecordUserId(record);
+    const sub = record?.subscription || {};
+    const current = meta.get(userId) || {
+      totalUsed: 0,
+      activeCount: 0,
+      latestEndTime: 0,
+    };
+
+    current.totalUsed += Number(sub.amount_used || 0);
+    if (getSubscriptionStatus(sub) === 'active') {
+      current.activeCount += 1;
+    }
+    current.latestEndTime = Math.max(
+      current.latestEndTime,
+      Number(sub.end_time || 0),
+    );
+    meta.set(userId, current);
+  });
+
+  return meta;
+}
+
+function compareUserUsageRecords(a, b, userUsageMeta) {
+  const aUserId = getRecordUserId(a);
+  const bUserId = getRecordUserId(b);
+  const aMeta = userUsageMeta.get(aUserId) || {
+    totalUsed: 0,
+    activeCount: 0,
+    latestEndTime: 0,
+  };
+  const bMeta = userUsageMeta.get(bUserId) || {
+    totalUsed: 0,
+    activeCount: 0,
+    latestEndTime: 0,
+  };
+
+  if (aUserId !== bUserId) {
+    const totalUsedDiff = bMeta.totalUsed - aMeta.totalUsed;
+    if (totalUsedDiff !== 0) return totalUsedDiff;
+
+    const activeCountDiff = bMeta.activeCount - aMeta.activeCount;
+    if (activeCountDiff !== 0) return activeCountDiff;
+
+    const latestEndTimeDiff = bMeta.latestEndTime - aMeta.latestEndTime;
+    if (latestEndTimeDiff !== 0) return latestEndTimeDiff;
+
+    return bUserId - aUserId;
+  }
+
+  return compareSubscriptionUsageRecords(a, b);
+}
+
 function getModelLimitEntries(record) {
   const limits = record?.model_amount_limits;
   if (!limits || typeof limits !== 'object') return [];
   const usages = record?.model_amount_limit_usages || {};
   return Object.entries(limits)
-    .sort(([a], [b]) => compareModelLimitKeys(a, b))
     .map(([modelName, limit]) => ({
       modelName,
       limit: Number(limit || 0),
       used: Number(usages?.[modelName] || 0),
-    }));
+    }))
+    .sort(compareModelLimitEntries);
+}
+
+function getUsageStroke(remainingPercent) {
+  return remainingPercent <= 20
+    ? 'var(--semi-color-danger)'
+    : remainingPercent <= 50
+      ? 'var(--semi-color-warning)'
+      : 'var(--semi-color-success)';
+}
+
+function buildCurrentSnapshot(records) {
+  const activeRecords = (records || []).filter(
+    (record) => getSubscriptionStatus(record?.subscription) === 'active',
+  );
+  const activeUsers = new Set();
+  const modelStats = {};
+
+  let limitedTotal = 0;
+  let limitedUsed = 0;
+  let unlimitedUsed = 0;
+  let unlimitedSubscriptions = 0;
+
+  activeRecords.forEach((record) => {
+    const sub = record?.subscription || {};
+    if (sub.user_id) {
+      activeUsers.add(sub.user_id);
+    }
+
+    const total = Number(sub.amount_total || 0);
+    const used = Number(sub.amount_used || 0);
+    if (total > 0) {
+      limitedTotal += total;
+      limitedUsed += used;
+    } else {
+      unlimitedSubscriptions += 1;
+      unlimitedUsed += used;
+    }
+
+    getModelLimitEntries(record).forEach(({ modelName, limit, used }) => {
+      if (!modelStats[modelName]) {
+        modelStats[modelName] = {
+          modelName,
+          limit: 0,
+          used: 0,
+        };
+      }
+      modelStats[modelName].limit += limit;
+      modelStats[modelName].used += used;
+    });
+  });
+
+  const modelEntries = Object.values(modelStats).sort(compareModelLimitEntries);
+
+  return {
+    activeSubscriptionCount: activeRecords.length,
+    activeUserCount: activeUsers.size,
+    limitedTotal,
+    limitedUsed,
+    unlimitedUsed,
+    unlimitedSubscriptions,
+    modelEntries,
+  };
 }
 
 function renderTotalUsage(record, t) {
@@ -106,7 +266,7 @@ function renderTotalUsage(record, t) {
   if (total <= 0) {
     return <Text type='tertiary'>{t('不限')}</Text>;
   }
-  const usedPercent = Math.min(100, Math.round((used / total) * 100));
+  const usedPercent = clampPercent((used / total) * 100);
   const remain = Math.max(0, total - used);
   return (
     <div className='min-w-[160px]'>
@@ -144,15 +304,9 @@ function renderModelLimitUsage(record, t) {
         const label = modelName === '*' ? t('其他模型') : modelName;
         const remain = limit > 0 ? Math.max(0, limit - used) : 0;
         const remainingPercent =
-          limit > 0 ? Math.min(100, Math.round((remain / limit) * 100)) : 0;
-        const usedPercent =
-          limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-        const stroke =
-          remainingPercent <= 20
-            ? 'var(--semi-color-danger)'
-            : remainingPercent <= 50
-              ? 'var(--semi-color-warning)'
-              : 'var(--semi-color-success)';
+          limit > 0 ? clampPercent((remain / limit) * 100) : 0;
+        const usedPercent = limit > 0 ? clampPercent((used / limit) * 100) : 0;
+        const stroke = getUsageStroke(remainingPercent);
 
         return (
           <div key={modelName} className='rounded-md bg-gray-50 px-2 py-1.5'>
@@ -179,6 +333,125 @@ function renderModelLimitUsage(record, t) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function renderCurrentSnapshot(records, t) {
+  const snapshot = buildCurrentSnapshot(records);
+  const totalRemaining = Math.max(
+    0,
+    snapshot.limitedTotal - snapshot.limitedUsed,
+  );
+  const totalUsedPercent =
+    snapshot.limitedTotal > 0
+      ? clampPercent((snapshot.limitedUsed / snapshot.limitedTotal) * 100)
+      : 0;
+  const totalRemainingPercent =
+    snapshot.limitedTotal > 0
+      ? clampPercent((totalRemaining / snapshot.limitedTotal) * 100)
+      : 0;
+  const totalStroke = getUsageStroke(totalRemainingPercent);
+
+  return (
+    <div className='mb-4 grid gap-3 md:grid-cols-3'>
+      <div className='rounded-lg border border-gray-200 bg-white px-3 py-3'>
+        <Text type='tertiary'>{t('当前生效')}</Text>
+        <div className='mt-2 flex items-end gap-2'>
+          <span className='text-2xl font-semibold text-gray-900'>
+            {snapshot.activeSubscriptionCount}
+          </span>
+          <Text type='secondary'>{t('个订阅')}</Text>
+        </div>
+        <div className='mt-1 text-xs text-gray-500'>
+          {t('用户')} {snapshot.activeUserCount}
+        </div>
+      </div>
+
+      <div className='rounded-lg border border-gray-200 bg-white px-3 py-3'>
+        <div className='flex items-center justify-between gap-2'>
+          <Text type='tertiary'>{t('当前总额度')}</Text>
+          {snapshot.limitedTotal > 0 ? (
+            <Text strong>
+              {t('剩余')} {totalRemainingPercent}%
+            </Text>
+          ) : (
+            <Text type='tertiary'>{t('不限')}</Text>
+          )}
+        </div>
+        {snapshot.activeSubscriptionCount === 0 ? (
+          <div className='mt-2 text-xs text-gray-500'>{t('暂无生效订阅')}</div>
+        ) : snapshot.limitedTotal > 0 ? (
+          <>
+            <Progress
+              percent={totalUsedPercent}
+              showInfo={false}
+              stroke={totalStroke}
+              style={{ marginTop: 10, marginBottom: 0 }}
+            />
+            <div className='mt-2 text-xs text-gray-500'>
+              {t('已用')} {renderQuota(snapshot.limitedUsed)} /{' '}
+              {renderQuota(snapshot.limitedTotal)}
+            </div>
+            <div className='text-xs text-gray-400'>
+              {t('剩余')} {renderQuota(totalRemaining)}
+            </div>
+          </>
+        ) : (
+          <div className='mt-2 text-xs text-gray-500'>
+            {t('不限订阅已用')} {renderQuota(snapshot.unlimitedUsed)}
+          </div>
+        )}
+        {snapshot.unlimitedSubscriptions > 0 && snapshot.limitedTotal > 0 && (
+          <div className='mt-1 text-xs text-gray-400'>
+            {snapshot.unlimitedSubscriptions} {t('个不限订阅已用')}{' '}
+            {renderQuota(snapshot.unlimitedUsed)}
+          </div>
+        )}
+      </div>
+
+      <div className='rounded-lg border border-gray-200 bg-white px-3 py-3'>
+        <div className='flex items-center justify-between gap-2'>
+          <Text type='tertiary'>{t('当前模型限额')}</Text>
+          <Tag color='cyan' shape='circle' size='small'>
+            {snapshot.modelEntries.length}
+          </Tag>
+        </div>
+        {snapshot.modelEntries.length === 0 ? (
+          <div className='mt-3 text-xs text-gray-500'>{t('未配置')}</div>
+        ) : (
+          <div className='mt-2 max-h-[154px] space-y-2 overflow-auto pr-1'>
+            {snapshot.modelEntries.map(({ modelName, limit, used }) => {
+              const label = modelName === '*' ? t('其他模型') : modelName;
+              const remain = limit > 0 ? Math.max(0, limit - used) : 0;
+              const remainingPercent =
+                limit > 0 ? clampPercent((remain / limit) * 100) : 0;
+              const usedPercent =
+                limit > 0 ? clampPercent((used / limit) * 100) : 0;
+              return (
+                <div key={modelName}>
+                  <div className='flex items-center justify-between gap-2 text-xs'>
+                    <Tooltip content={modelName}>
+                      <span className='truncate font-medium text-gray-700'>
+                        {label}
+                      </span>
+                    </Tooltip>
+                    <span className='shrink-0 text-gray-500'>
+                      {t('剩余')} {remainingPercent}%
+                    </span>
+                  </div>
+                  <Progress
+                    percent={usedPercent}
+                    showInfo={false}
+                    stroke={getUsageStroke(remainingPercent)}
+                    style={{ marginTop: 4, marginBottom: 0 }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -235,7 +508,7 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
 
   const filteredRecords = useMemo(() => {
     const q = keyword.trim().toLowerCase();
-    return (records || []).filter((record) => {
+    const filtered = (records || []).filter((record) => {
       const sub = record?.subscription || {};
       const user = record?.user || {};
       if (
@@ -259,6 +532,11 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
         .toLowerCase()
         .includes(q);
     });
+
+    const userUsageMeta = buildUserUsageSortMeta(filtered);
+    return filtered.sort((a, b) =>
+      compareUserUsageRecords(a, b, userUsageMeta),
+    );
   }, [records, keyword, statusFilter]);
 
   useEffect(() => {
@@ -377,6 +655,8 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
       width={isMobile ? '100%' : 1120}
       bodyStyle={{ padding: 16 }}
     >
+      {renderCurrentSnapshot(records, t)}
+
       <div className='mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
         <Space wrap>
           <Tag color='green' shape='circle'>
