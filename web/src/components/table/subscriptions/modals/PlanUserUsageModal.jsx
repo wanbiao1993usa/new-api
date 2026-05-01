@@ -206,16 +206,22 @@ function getUsageStroke(remainingPercent) {
 }
 
 function buildCurrentSnapshot(records) {
+  const allRecords = records || [];
   const activeRecords = (records || []).filter(
     (record) => getSubscriptionStatus(record?.subscription) === 'active',
   );
   const activeUsers = new Set();
   const modelStats = {};
 
+  let totalUsedAll = 0;
   let limitedTotal = 0;
   let limitedUsed = 0;
   let unlimitedUsed = 0;
   let unlimitedSubscriptions = 0;
+
+  allRecords.forEach((record) => {
+    totalUsedAll += Number(record?.subscription?.amount_used || 0);
+  });
 
   activeRecords.forEach((record) => {
     const sub = record?.subscription || {};
@@ -251,6 +257,7 @@ function buildCurrentSnapshot(records) {
   return {
     activeSubscriptionCount: activeRecords.length,
     activeUserCount: activeUsers.size,
+    totalUsedAll,
     limitedTotal,
     limitedUsed,
     unlimitedUsed,
@@ -339,19 +346,11 @@ function renderModelLimitUsage(record, t) {
 
 function renderCurrentSnapshot(records, t) {
   const snapshot = buildCurrentSnapshot(records);
-  const totalRemaining = Math.max(
+  const activeUsedTotal = snapshot.limitedUsed + snapshot.unlimitedUsed;
+  const historicalUsedTotal = Math.max(
     0,
-    snapshot.limitedTotal - snapshot.limitedUsed,
+    snapshot.totalUsedAll - activeUsedTotal,
   );
-  const totalUsedPercent =
-    snapshot.limitedTotal > 0
-      ? clampPercent((snapshot.limitedUsed / snapshot.limitedTotal) * 100)
-      : 0;
-  const totalRemainingPercent =
-    snapshot.limitedTotal > 0
-      ? clampPercent((totalRemaining / snapshot.limitedTotal) * 100)
-      : 0;
-  const totalStroke = getUsageStroke(totalRemainingPercent);
 
   return (
     <div className='mb-4 grid gap-3 md:grid-cols-3'>
@@ -370,39 +369,22 @@ function renderCurrentSnapshot(records, t) {
 
       <div className='rounded-lg border border-gray-200 bg-white px-3 py-3'>
         <div className='flex items-center justify-between gap-2'>
-          <Text type='tertiary'>{t('当前总额度')}</Text>
-          {snapshot.limitedTotal > 0 ? (
-            <Text strong>
-              {t('剩余')} {totalRemainingPercent}%
-            </Text>
-          ) : (
-            <Text type='tertiary'>{t('不限')}</Text>
-          )}
+          <Text type='tertiary'>{t('累计已用额度')}</Text>
+          <Text strong>{renderQuota(snapshot.totalUsedAll)}</Text>
         </div>
-        {snapshot.activeSubscriptionCount === 0 ? (
-          <div className='mt-2 text-xs text-gray-500'>{t('暂无生效订阅')}</div>
-        ) : snapshot.limitedTotal > 0 ? (
-          <>
-            <Progress
-              percent={totalUsedPercent}
-              showInfo={false}
-              stroke={totalStroke}
-              style={{ marginTop: 10, marginBottom: 0 }}
-            />
-            <div className='mt-2 text-xs text-gray-500'>
-              {t('已用')} {renderQuota(snapshot.limitedUsed)} /{' '}
-              {renderQuota(snapshot.limitedTotal)}
+        {records.length === 0 ? (
+          <div className='mt-2 text-xs text-gray-500'>{t('暂无订阅记录')}</div>
+        ) : (
+          <div className='mt-2 space-y-1 text-xs text-gray-500'>
+            <div>
+              {t('当前生效订阅已用')} {renderQuota(activeUsedTotal)}
             </div>
             <div className='text-xs text-gray-400'>
-              {t('剩余')} {renderQuota(totalRemaining)}
+              {t('历史订阅已用')} {renderQuota(historicalUsedTotal)}
             </div>
-          </>
-        ) : (
-          <div className='mt-2 text-xs text-gray-500'>
-            {t('不限订阅已用')} {renderQuota(snapshot.unlimitedUsed)}
           </div>
         )}
-        {snapshot.unlimitedSubscriptions > 0 && snapshot.limitedTotal > 0 && (
+        {snapshot.unlimitedSubscriptions > 0 && (
           <div className='mt-1 text-xs text-gray-400'>
             {snapshot.unlimitedSubscriptions} {t('个不限订阅已用')}{' '}
             {renderQuota(snapshot.unlimitedUsed)}
