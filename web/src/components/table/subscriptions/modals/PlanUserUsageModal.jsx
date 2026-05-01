@@ -109,8 +109,16 @@ function getRecordUserId(record) {
   return Number(record?.subscription?.user_id || record?.user?.id || 0);
 }
 
+function getHistoricalUserUsed(userId, historicalUsageByUser) {
+  if (!historicalUsageByUser || userId <= 0) return 0;
+  return Number(
+    historicalUsageByUser[userId] || historicalUsageByUser[String(userId)] || 0,
+  );
+}
+
 function compareSubscriptionUsageRecords(a, b) {
-  const amountUsedDiff = Number(b?.subscription?.amount_used || 0) -
+  const amountUsedDiff =
+    Number(b?.subscription?.amount_used || 0) -
     Number(a?.subscription?.amount_used || 0);
   if (amountUsedDiff !== 0) return amountUsedDiff;
 
@@ -121,26 +129,28 @@ function compareSubscriptionUsageRecords(a, b) {
     if (bStatus === 'active') return 1;
   }
 
-  const endTimeDiff = Number(b?.subscription?.end_time || 0) -
+  const endTimeDiff =
+    Number(b?.subscription?.end_time || 0) -
     Number(a?.subscription?.end_time || 0);
   if (endTimeDiff !== 0) return endTimeDiff;
 
   return Number(b?.subscription?.id || 0) - Number(a?.subscription?.id || 0);
 }
 
-function buildUserUsageSortMeta(records) {
+function buildUserUsageSortMeta(records, historicalUsageByUser) {
   const meta = new Map();
 
   (records || []).forEach((record) => {
     const userId = getRecordUserId(record);
     const sub = record?.subscription || {};
     const current = meta.get(userId) || {
-      totalUsed: 0,
+      historicalTotalUsed: getHistoricalUserUsed(userId, historicalUsageByUser),
+      currentCycleUsed: 0,
       activeCount: 0,
       latestEndTime: 0,
     };
 
-    current.totalUsed += Number(sub.amount_used || 0);
+    current.currentCycleUsed += Number(sub.amount_used || 0);
     if (getSubscriptionStatus(sub) === 'active') {
       current.activeCount += 1;
     }
@@ -158,18 +168,28 @@ function compareUserUsageRecords(a, b, userUsageMeta) {
   const aUserId = getRecordUserId(a);
   const bUserId = getRecordUserId(b);
   const aMeta = userUsageMeta.get(aUserId) || {
-    totalUsed: 0,
+    historicalTotalUsed: 0,
+    currentCycleUsed: 0,
     activeCount: 0,
     latestEndTime: 0,
   };
   const bMeta = userUsageMeta.get(bUserId) || {
-    totalUsed: 0,
+    historicalTotalUsed: 0,
+    currentCycleUsed: 0,
     activeCount: 0,
     latestEndTime: 0,
   };
 
   if (aUserId !== bUserId) {
-    const totalUsedDiff = bMeta.totalUsed - aMeta.totalUsed;
+    const aEffectiveUsed =
+      aMeta.historicalTotalUsed > 0
+        ? aMeta.historicalTotalUsed
+        : aMeta.currentCycleUsed;
+    const bEffectiveUsed =
+      bMeta.historicalTotalUsed > 0
+        ? bMeta.historicalTotalUsed
+        : bMeta.currentCycleUsed;
+    const totalUsedDiff = bEffectiveUsed - aEffectiveUsed;
     if (totalUsedDiff !== 0) return totalUsedDiff;
 
     const activeCountDiff = bMeta.activeCount - aMeta.activeCount;
@@ -344,13 +364,13 @@ function renderModelLimitUsage(record, t) {
   );
 }
 
-function renderCurrentSnapshot(records, t) {
-  const snapshot = buildCurrentSnapshot(records);
-  const activeUsedTotal = snapshot.limitedUsed + snapshot.unlimitedUsed;
+function renderCurrentSnapshot(snapshot, recordCount, t) {
   const historicalUsedTotal = Math.max(
-    0,
-    snapshot.totalUsedAll - activeUsedTotal,
+    Number(snapshot.historicalUsedTotal || 0),
+    Number(snapshot.totalUsedAll || 0),
   );
+  const activeUsedTotal = snapshot.limitedUsed + snapshot.unlimitedUsed;
+  const previousUsedTotal = Math.max(0, historicalUsedTotal - activeUsedTotal);
 
   return (
     <div className='mb-4 grid gap-3 md:grid-cols-3'>
@@ -370,17 +390,17 @@ function renderCurrentSnapshot(records, t) {
       <div className='rounded-lg border border-gray-200 bg-white px-3 py-3'>
         <div className='flex items-center justify-between gap-2'>
           <Text type='tertiary'>{t('累计已用额度')}</Text>
-          <Text strong>{renderQuota(snapshot.totalUsedAll)}</Text>
+          <Text strong>{renderQuota(historicalUsedTotal)}</Text>
         </div>
-        {records.length === 0 ? (
+        {recordCount === 0 ? (
           <div className='mt-2 text-xs text-gray-500'>{t('暂无订阅记录')}</div>
         ) : (
           <div className='mt-2 space-y-1 text-xs text-gray-500'>
             <div>
-              {t('当前生效订阅已用')} {renderQuota(activeUsedTotal)}
+              {t('当前生效订阅当前周期已用')} {renderQuota(activeUsedTotal)}
             </div>
             <div className='text-xs text-gray-400'>
-              {t('历史订阅已用')} {renderQuota(historicalUsedTotal)}
+              {t('历史累计往期已用')} {renderQuota(previousUsedTotal)}
             </div>
           </div>
         )}
@@ -443,6 +463,10 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
   const plan = planRecord?.plan;
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState([]);
+  const [historicalUsage, setHistoricalUsage] = useState({
+    historical_used_total: 0,
+    historical_used_by_user: {},
+  });
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -456,7 +480,22 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
         `/api/subscription/admin/plans/${plan.id}/user_subscriptions`,
       );
       if (res.data?.success) {
-        setRecords(res.data.data || []);
+        const payload = res.data.data;
+        if (Array.isArray(payload)) {
+          setRecords(payload);
+          setHistoricalUsage({
+            historical_used_total: 0,
+            historical_used_by_user: {},
+          });
+        } else {
+          setRecords(payload?.records || []);
+          setHistoricalUsage(
+            payload?.historical_usage || {
+              historical_used_total: 0,
+              historical_used_by_user: {},
+            },
+          );
+        }
       } else {
         showError(res.data?.message || t('加载失败'));
       }
@@ -475,6 +514,10 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
       setStatusFilter('all');
       setCurrentPage(1);
       setRecords([]);
+      setHistoricalUsage({
+        historical_used_total: 0,
+        historical_used_by_user: {},
+      });
     }
   }, [visible, plan?.id]);
 
@@ -515,11 +558,14 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
         .includes(q);
     });
 
-    const userUsageMeta = buildUserUsageSortMeta(filtered);
+    const userUsageMeta = buildUserUsageSortMeta(
+      filtered,
+      historicalUsage?.historical_used_by_user,
+    );
     return filtered.sort((a, b) =>
       compareUserUsageRecords(a, b, userUsageMeta),
     );
-  }, [records, keyword, statusFilter]);
+  }, [records, keyword, statusFilter, historicalUsage]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -529,6 +575,14 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
     const start = Math.max(0, (currentPage - 1) * pageSize);
     return filteredRecords.slice(start, start + pageSize);
   }, [filteredRecords, currentPage]);
+
+  const currentSnapshot = useMemo(
+    () => ({
+      ...buildCurrentSnapshot(records),
+      historicalUsedTotal: historicalUsage?.historical_used_total || 0,
+    }),
+    [records, historicalUsage],
+  );
 
   const columns = useMemo(
     () => [
@@ -558,6 +612,27 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
                   {user.group}
                 </Tag>
               )}
+            </div>
+          );
+        },
+      },
+      {
+        title: t('历史消费总额'),
+        key: 'historical_total_used',
+        width: 160,
+        render: (_, record) => {
+          const historicalUsed = getHistoricalUserUsed(
+            getRecordUserId(record),
+            historicalUsage?.historical_used_by_user,
+          );
+          return (
+            <div className='min-w-[140px]'>
+              <div className='font-medium text-gray-900'>
+                {renderQuota(historicalUsed)}
+              </div>
+              <div className='text-xs text-gray-400'>
+                {t('含已过期订阅')}
+              </div>
             </div>
           );
         },
@@ -616,7 +691,7 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
         render: (_, record) => renderModelLimitUsage(record, t),
       },
     ],
-    [t],
+    [t, historicalUsage],
   );
 
   return (
@@ -637,7 +712,7 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
       width={isMobile ? '100%' : 1120}
       bodyStyle={{ padding: 16 }}
     >
-      {renderCurrentSnapshot(records, t)}
+      {renderCurrentSnapshot(currentSnapshot, records.length, t)}
 
       <div className='mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
         <Space wrap>

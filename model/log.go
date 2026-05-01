@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -430,6 +431,78 @@ type Stat struct {
 	Quota int `json:"quota"`
 	Rpm   int `json:"rpm"`
 	Tpm   int `json:"tpm"`
+}
+
+type SubscriptionPlanHistoricalUsageStats struct {
+	HistoricalUsedTotal  int64         `json:"historical_used_total"`
+	HistoricalUsedByUser map[int]int64 `json:"historical_used_by_user,omitempty"`
+}
+
+type subscriptionBillingLogOther struct {
+	BillingSource        string `json:"billing_source"`
+	SubscriptionPlanId   int    `json:"subscription_plan_id"`
+	SubscriptionConsumed int64  `json:"subscription_consumed"`
+}
+
+func GetSubscriptionPlanHistoricalUsageStats(planId int) (SubscriptionPlanHistoricalUsageStats, error) {
+	stats := SubscriptionPlanHistoricalUsageStats{
+		HistoricalUsedByUser: make(map[int]int64),
+	}
+	if planId <= 0 {
+		return stats, errors.New("invalid planId")
+	}
+
+	billingSourcePattern := `%"billing_source":"subscription"%`
+	planPatternMiddle := `%"subscription_plan_id":` + strconv.Itoa(planId) + `,%`
+	planPatternEnd := `%"subscription_plan_id":` + strconv.Itoa(planId) + `}%`
+
+	var logs []Log
+	if err := LOG_DB.Model(&Log{}).
+		Select("user_id", "quota", "other", "type").
+		Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
+		Where("other LIKE ?", billingSourcePattern).
+		Where("(other LIKE ? OR other LIKE ?)", planPatternMiddle, planPatternEnd).
+		Find(&logs).Error; err != nil {
+		return stats, err
+	}
+
+	for _, log := range logs {
+		if log.Other == "" {
+			continue
+		}
+		var other subscriptionBillingLogOther
+		if err := common.UnmarshalJsonStr(log.Other, &other); err != nil {
+			continue
+		}
+		if other.BillingSource != "subscription" || other.SubscriptionPlanId != planId {
+			continue
+		}
+		consumed := other.SubscriptionConsumed
+		if consumed <= 0 && log.Quota > 0 {
+			consumed = int64(log.Quota)
+		}
+		if consumed <= 0 {
+			continue
+		}
+		sign := int64(1)
+		if log.Type == LogTypeRefund {
+			sign = -1
+		}
+		stats.HistoricalUsedTotal += sign * consumed
+		if log.UserId > 0 {
+			stats.HistoricalUsedByUser[log.UserId] += sign * consumed
+		}
+	}
+	if stats.HistoricalUsedTotal < 0 {
+		stats.HistoricalUsedTotal = 0
+	}
+	for userId, total := range stats.HistoricalUsedByUser {
+		if total < 0 {
+			stats.HistoricalUsedByUser[userId] = 0
+		}
+	}
+
+	return stats, nil
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {

@@ -387,6 +387,83 @@ func TestGetAllUserSubscriptionsByPlanIncludesUsersAndModelLimitUsage(t *testing
 	assert.EqualValues(t, 300, bySubId[714].ModelAmountLimitUsages["*"])
 }
 
+func TestGetSubscriptionPlanHistoricalUsageStatsAggregatesConsumeLogs(t *testing.T) {
+	truncateTables(t)
+
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId:    801,
+		CreatedAt: time.Now().Unix(),
+		Type:      LogTypeConsume,
+		Quota:     120,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":        "subscription",
+			"subscription_plan_id":  901,
+			"subscription_consumed": 120,
+		}),
+	}).Error)
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId:    801,
+		CreatedAt: time.Now().Unix(),
+		Type:      LogTypeConsume,
+		Quota:     30,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":       "subscription",
+			"subscription_plan_id": 901,
+		}),
+	}).Error)
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId:    802,
+		CreatedAt: time.Now().Unix(),
+		Type:      LogTypeConsume,
+		Quota:     80,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":        "subscription",
+			"subscription_plan_id":  901,
+			"subscription_consumed": 80,
+		}),
+	}).Error)
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId:    802,
+		CreatedAt: time.Now().Unix(),
+		Type:      LogTypeRefund,
+		Quota:     20,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":       "subscription",
+			"subscription_plan_id": 901,
+		}),
+	}).Error)
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId:    803,
+		CreatedAt: time.Now().Unix(),
+		Type:      LogTypeConsume,
+		Quota:     999,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":        "wallet",
+			"subscription_plan_id":  901,
+			"subscription_consumed": 999,
+		}),
+	}).Error)
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId:    804,
+		CreatedAt: time.Now().Unix(),
+		Type:      LogTypeConsume,
+		Quota:     777,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":        "subscription",
+			"subscription_plan_id":  902,
+			"subscription_consumed": 777,
+		}),
+	}).Error)
+
+	stats, err := GetSubscriptionPlanHistoricalUsageStats(901)
+	require.NoError(t, err)
+	assert.EqualValues(t, 210, stats.HistoricalUsedTotal)
+	assert.EqualValues(t, 150, stats.HistoricalUsedByUser[801])
+	assert.EqualValues(t, 60, stats.HistoricalUsedByUser[802])
+	_, exists := stats.HistoricalUsedByUser[803]
+	assert.False(t, exists)
+}
+
 func TestGetAllUserSubscriptionsGroupsPrefixWildcardUsageSummary(t *testing.T) {
 	truncateTables(t)
 

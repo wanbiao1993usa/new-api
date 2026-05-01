@@ -204,6 +204,11 @@ type AdminUpsertSubscriptionPlanRequest struct {
 	Plan model.SubscriptionPlan `json:"plan"`
 }
 
+type AdminPlanUserSubscriptionsResponse struct {
+	Records         []model.SubscriptionSummaryWithUser   `json:"records"`
+	HistoricalUsage model.SubscriptionPlanHistoricalUsageStats `json:"historical_usage"`
+}
+
 func AdminCreateSubscriptionPlan(c *gin.Context) {
 	var req AdminUpsertSubscriptionPlanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -433,7 +438,15 @@ func AdminListPlanUserSubscriptions(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, subs)
+	historicalUsage, err := model.GetSubscriptionPlanHistoricalUsageStats(planId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, AdminPlanUserSubscriptionsResponse{
+		Records:         subs,
+		HistoricalUsage: historicalUsage,
+	})
 }
 
 type AdminCreateUserSubscriptionRequest struct {
