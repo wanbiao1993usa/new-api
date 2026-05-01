@@ -434,19 +434,26 @@ type Stat struct {
 }
 
 type SubscriptionPlanHistoricalUsageStats struct {
-	HistoricalUsedTotal  int64         `json:"historical_used_total"`
-	HistoricalUsedByUser map[int]int64 `json:"historical_used_by_user,omitempty"`
+	HistoricalUsedTotal       int64         `json:"historical_used_total"`
+	HistoricalUsedByUser      map[int]int64 `json:"historical_used_by_user,omitempty"`
+	HistoricalCallCountTotal  int64         `json:"historical_call_count_total"`
+	HistoricalCallCountByUser map[int]int64 `json:"historical_call_count_by_user,omitempty"`
 }
 
 type subscriptionBillingLogOther struct {
 	BillingSource        string `json:"billing_source"`
 	SubscriptionPlanId   int    `json:"subscription_plan_id"`
 	SubscriptionConsumed int64  `json:"subscription_consumed"`
+	ViolationFee         bool   `json:"violation_fee"`
+	TaskID               string `json:"task_id"`
+	PreConsumedQuota     int64  `json:"pre_consumed_quota"`
+	ActualQuota          int64  `json:"actual_quota"`
 }
 
 func GetSubscriptionPlanHistoricalUsageStats(planId int) (SubscriptionPlanHistoricalUsageStats, error) {
 	stats := SubscriptionPlanHistoricalUsageStats{
-		HistoricalUsedByUser: make(map[int]int64),
+		HistoricalUsedByUser:      make(map[int]int64),
+		HistoricalCallCountByUser: make(map[int]int64),
 	}
 	if planId <= 0 {
 		return stats, errors.New("invalid planId")
@@ -458,7 +465,7 @@ func GetSubscriptionPlanHistoricalUsageStats(planId int) (SubscriptionPlanHistor
 
 	var logs []Log
 	if err := LOG_DB.Model(&Log{}).
-		Select("user_id", "quota", "other", "type").
+		Select("id", "user_id", "quota", "other", "type", "request_id").
 		Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
 		Where("other LIKE ?", billingSourcePattern).
 		Where("(other LIKE ? OR other LIKE ?)", planPatternMiddle, planPatternEnd).
@@ -466,6 +473,7 @@ func GetSubscriptionPlanHistoricalUsageStats(planId int) (SubscriptionPlanHistor
 		return stats, err
 	}
 
+	seenCallKeys := make(map[string]struct{})
 	for _, log := range logs {
 		if log.Other == "" {
 			continue
@@ -491,6 +499,28 @@ func GetSubscriptionPlanHistoricalUsageStats(planId int) (SubscriptionPlanHistor
 		stats.HistoricalUsedTotal += sign * consumed
 		if log.UserId > 0 {
 			stats.HistoricalUsedByUser[log.UserId] += sign * consumed
+		}
+		if log.Type != LogTypeConsume || other.ViolationFee {
+			continue
+		}
+		if other.PreConsumedQuota != 0 || other.ActualQuota != 0 {
+			continue
+		}
+		callKey := ""
+		if log.RequestId != "" {
+			callKey = "req:" + log.RequestId
+		} else if other.TaskID != "" {
+			callKey = "task:" + other.TaskID
+		} else {
+			callKey = "log:" + strconv.Itoa(log.Id)
+		}
+		if _, exists := seenCallKeys[callKey]; exists {
+			continue
+		}
+		seenCallKeys[callKey] = struct{}{}
+		stats.HistoricalCallCountTotal += 1
+		if log.UserId > 0 {
+			stats.HistoricalCallCountByUser[log.UserId] += 1
 		}
 	}
 	if stats.HistoricalUsedTotal < 0 {

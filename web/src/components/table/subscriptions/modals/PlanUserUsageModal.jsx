@@ -116,6 +116,15 @@ function getHistoricalUserUsed(userId, historicalUsageByUser) {
   );
 }
 
+function getHistoricalUserCallCount(userId, historicalCallCountByUser) {
+  if (!historicalCallCountByUser || userId <= 0) return 0;
+  return Number(
+    historicalCallCountByUser[userId] ||
+      historicalCallCountByUser[String(userId)] ||
+      0,
+  );
+}
+
 function compareSubscriptionUsageRecords(a, b) {
   const amountUsedDiff =
     Number(b?.subscription?.amount_used || 0) -
@@ -466,6 +475,8 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
   const [historicalUsage, setHistoricalUsage] = useState({
     historical_used_total: 0,
     historical_used_by_user: {},
+    historical_call_count_total: 0,
+    historical_call_count_by_user: {},
   });
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -486,6 +497,8 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
           setHistoricalUsage({
             historical_used_total: 0,
             historical_used_by_user: {},
+            historical_call_count_total: 0,
+            historical_call_count_by_user: {},
           });
         } else {
           setRecords(payload?.records || []);
@@ -493,6 +506,8 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
             payload?.historical_usage || {
               historical_used_total: 0,
               historical_used_by_user: {},
+              historical_call_count_total: 0,
+              historical_call_count_by_user: {},
             },
           );
         }
@@ -517,6 +532,8 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
       setHistoricalUsage({
         historical_used_total: 0,
         historical_used_by_user: {},
+        historical_call_count_total: 0,
+        historical_call_count_by_user: {},
       });
     }
   }, [visible, plan?.id]);
@@ -601,6 +618,13 @@ const PlanUserUsageModal = ({ visible, onCancel, planRecord, t }) => {
               <div className='text-xs text-gray-500'>
                 ID: {sub.user_id}
                 {user.username ? ` · ${user.username}` : ''}
+              </div>
+              <div className='text-xs text-gray-400'>
+                {t('历史总调用次数')}{' '}
+                {getHistoricalUserCallCount(
+                  getRecordUserId(record),
+                  historicalUsage?.historical_call_count_by_user,
+                )}
               </div>
               {user.email && (
                 <div className='text-xs text-gray-400 truncate'>

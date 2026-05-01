@@ -395,6 +395,7 @@ func TestGetSubscriptionPlanHistoricalUsageStatsAggregatesConsumeLogs(t *testing
 		CreatedAt: time.Now().Unix(),
 		Type:      LogTypeConsume,
 		Quota:     120,
+		RequestId: "req-sub-1",
 		Other: common.MapToJsonStr(map[string]interface{}{
 			"billing_source":        "subscription",
 			"subscription_plan_id":  901,
@@ -406,6 +407,7 @@ func TestGetSubscriptionPlanHistoricalUsageStatsAggregatesConsumeLogs(t *testing
 		CreatedAt: time.Now().Unix(),
 		Type:      LogTypeConsume,
 		Quota:     30,
+		RequestId: "req-sub-2",
 		Other: common.MapToJsonStr(map[string]interface{}{
 			"billing_source":       "subscription",
 			"subscription_plan_id": 901,
@@ -416,6 +418,7 @@ func TestGetSubscriptionPlanHistoricalUsageStatsAggregatesConsumeLogs(t *testing
 		CreatedAt: time.Now().Unix(),
 		Type:      LogTypeConsume,
 		Quota:     80,
+		RequestId: "req-sub-3",
 		Other: common.MapToJsonStr(map[string]interface{}{
 			"billing_source":        "subscription",
 			"subscription_plan_id":  901,
@@ -433,10 +436,25 @@ func TestGetSubscriptionPlanHistoricalUsageStatsAggregatesConsumeLogs(t *testing
 		}),
 	}).Error)
 	require.NoError(t, LOG_DB.Create(&Log{
+		UserId:    802,
+		CreatedAt: time.Now().Unix(),
+		Type:      LogTypeConsume,
+		Quota:     15,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":        "subscription",
+			"subscription_plan_id":  901,
+			"subscription_consumed": 15,
+			"task_id":               "task_1",
+			"pre_consumed_quota":    100,
+			"actual_quota":          115,
+		}),
+	}).Error)
+	require.NoError(t, LOG_DB.Create(&Log{
 		UserId:    803,
 		CreatedAt: time.Now().Unix(),
 		Type:      LogTypeConsume,
 		Quota:     999,
+		RequestId: "req-wallet-1",
 		Other: common.MapToJsonStr(map[string]interface{}{
 			"billing_source":        "wallet",
 			"subscription_plan_id":  901,
@@ -444,10 +462,24 @@ func TestGetSubscriptionPlanHistoricalUsageStatsAggregatesConsumeLogs(t *testing
 		}),
 	}).Error)
 	require.NoError(t, LOG_DB.Create(&Log{
+		UserId:    803,
+		CreatedAt: time.Now().Unix(),
+		Type:      LogTypeConsume,
+		Quota:     50,
+		RequestId: "req-violation-1",
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":        "subscription",
+			"subscription_plan_id":  901,
+			"subscription_consumed": 50,
+			"violation_fee":         true,
+		}),
+	}).Error)
+	require.NoError(t, LOG_DB.Create(&Log{
 		UserId:    804,
 		CreatedAt: time.Now().Unix(),
 		Type:      LogTypeConsume,
 		Quota:     777,
+		RequestId: "req-sub-4",
 		Other: common.MapToJsonStr(map[string]interface{}{
 			"billing_source":        "subscription",
 			"subscription_plan_id":  902,
@@ -457,10 +489,14 @@ func TestGetSubscriptionPlanHistoricalUsageStatsAggregatesConsumeLogs(t *testing
 
 	stats, err := GetSubscriptionPlanHistoricalUsageStats(901)
 	require.NoError(t, err)
-	assert.EqualValues(t, 210, stats.HistoricalUsedTotal)
+	assert.EqualValues(t, 275, stats.HistoricalUsedTotal)
 	assert.EqualValues(t, 150, stats.HistoricalUsedByUser[801])
-	assert.EqualValues(t, 60, stats.HistoricalUsedByUser[802])
-	_, exists := stats.HistoricalUsedByUser[803]
+	assert.EqualValues(t, 75, stats.HistoricalUsedByUser[802])
+	assert.EqualValues(t, 50, stats.HistoricalUsedByUser[803])
+	assert.EqualValues(t, 3, stats.HistoricalCallCountTotal)
+	assert.EqualValues(t, 2, stats.HistoricalCallCountByUser[801])
+	assert.EqualValues(t, 1, stats.HistoricalCallCountByUser[802])
+	_, exists := stats.HistoricalCallCountByUser[803]
 	assert.False(t, exists)
 }
 
