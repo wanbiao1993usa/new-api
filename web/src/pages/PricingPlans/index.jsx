@@ -47,22 +47,16 @@ const PLANS = [
     ],
   },
   {
-    key: 'unlimited-war',
-    name: '无限战争',
-    subtitle: '全平台不限额度，重度使用优先',
-    price: '$20',
+    key: 'vip',
+    name: 'VIP',
+    subtitle: '大于pro x20订阅总量，相当于0.1314元/1美元',
+    price: '$199',
     priceNote: '每月',
     icon: Infinity,
-    actionText: '购买套餐',
+    actionText: '立即订阅',
     actionTo: '/console/topup?tab=subscription',
     highlighted: true,
-    features: [
-      '有效期: 1 个月',
-      '额度充值: 5 小时',
-      '每 5 小时总额度: $400.00',
-      '可叠加使用',
-      '升级分组: 无限战争',
-    ],
+    features: ['有效期: 1 个月', '总额度: $11111.00', '升级分组: VIP'],
   },
   {
     key: 'custom',
@@ -80,6 +74,88 @@ const PLANS = [
     ],
   },
 ];
+
+const GPT54_BASE_PRICING = {
+  input: 2.5,
+  output: 15,
+};
+const GPT54_PRICING_PROFILES = {
+  payAsYouGo: {
+    label: '按量付费',
+    multiplier: 0.02,
+  },
+  vip: {
+    label: 'VIP',
+    multiplier: 0.018,
+  },
+};
+const getGpt54ProfilePrice = (profile) => ({
+  input: GPT54_BASE_PRICING.input * profile.multiplier,
+  output: GPT54_BASE_PRICING.output * profile.multiplier,
+});
+const GPT54_PAY_AS_YOU_GO_PRICING = getGpt54ProfilePrice(
+  GPT54_PRICING_PROFILES.payAsYouGo,
+);
+const GPT54_VIP_PRICING = getGpt54ProfilePrice(GPT54_PRICING_PROFILES.vip);
+
+const PRICE_COMPARISONS = [
+  {
+    model: 'DeepSeek V4 Pro',
+    inputPrice: 1.74,
+    outputPrice: 3.48,
+  },
+  {
+    model: 'Qwen3.6 Plus',
+    inputPrice: 0.276,
+    outputPrice: 1.651,
+  },
+  {
+    model: 'GLM 5.1',
+    inputPrice: 1.4,
+    outputPrice: 4.4,
+  },
+  {
+    model: 'Kimi K2.6',
+    inputPrice: 0.95,
+    outputPrice: 4,
+  },
+  {
+    model: 'MiniMax M2.7',
+    inputPrice: 0.3,
+    outputPrice: 1.2,
+  },
+].map((item) => ({
+  ...item,
+  payAsYouGoSaving: {
+    input: item.inputPrice / GPT54_PAY_AS_YOU_GO_PRICING.input,
+    output: item.outputPrice / GPT54_PAY_AS_YOU_GO_PRICING.output,
+  },
+  vipSaving: {
+    input: item.inputPrice / GPT54_VIP_PRICING.input,
+    output: item.outputPrice / GPT54_VIP_PRICING.output,
+  },
+}));
+
+const formatUsd = (value) =>
+  `$${value > 0 && value < 0.05 ? value.toFixed(3) : value.toFixed(2)}`;
+const formatSaving = (value) =>
+  value >= 10 ? value.toFixed(1) : value.toFixed(2);
+const formatSavingText = (value, t) => {
+  if (value >= 1) {
+    return t('便宜 {{times}} 倍', {
+      times: formatSaving(value),
+    });
+  }
+
+  return t('贵 {{times}} 倍', {
+    times: formatSaving(1 / value),
+  });
+};
+const formatProfileComparison = (saving, t) =>
+  `${t('输入')} ${formatSavingText(saving.input, t)} / ${t('输出')} ${formatSavingText(
+    saving.output,
+    t,
+  )}`;
 
 const PricingPlans = () => {
   const { t } = useTranslation();
@@ -356,6 +432,115 @@ const PricingPlans = () => {
           line-height: 1.7;
         }
 
+        .plans-comparison {
+          margin-top: 24px;
+          padding: 28px;
+          border-radius: 8px;
+          background: var(--plans-surface);
+          border: 1px solid var(--plans-border);
+          box-shadow: var(--plans-shadow);
+        }
+
+        .plans-comparison-header {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 20px;
+          align-items: end;
+          margin-bottom: 18px;
+        }
+
+        .plans-comparison-title {
+          margin: 0;
+          color: var(--plans-text);
+          font-size: 24px;
+          line-height: 1.25;
+          font-weight: 800;
+          letter-spacing: 0;
+        }
+
+        .plans-comparison-desc {
+          max-width: 760px;
+          margin: 8px 0 0;
+          color: var(--plans-muted);
+          font-size: 14px;
+          line-height: 1.7;
+        }
+
+        .plans-comparison-benchmark {
+          display: grid;
+          gap: 4px;
+          min-width: 190px;
+          padding: 12px 14px;
+          border-radius: 8px;
+          background: var(--plans-surface-muted);
+          color: var(--plans-text);
+          font-size: 14px;
+          font-weight: 700;
+          text-align: right;
+        }
+
+        .plans-comparison-benchmark span {
+          color: var(--plans-muted);
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .plans-table-wrap {
+          overflow-x: auto;
+          border: 1px solid var(--plans-border);
+          border-radius: 8px;
+        }
+
+        .plans-table {
+          width: 100%;
+          min-width: 720px;
+          border-collapse: collapse;
+          font-size: 14px;
+        }
+
+        .plans-table th,
+        .plans-table td {
+          padding: 15px 16px;
+          border-bottom: 1px solid var(--plans-border);
+          text-align: left;
+          white-space: nowrap;
+        }
+
+        .plans-table th {
+          color: var(--plans-muted);
+          background: var(--plans-surface-muted);
+          font-size: 12px;
+          font-weight: 800;
+        }
+
+        .plans-table tbody tr:last-child td {
+          border-bottom: 0;
+        }
+
+        .plans-table-model {
+          color: var(--plans-text);
+          font-weight: 800;
+        }
+
+        .plans-table-price {
+          color: var(--plans-text);
+          font-variant-numeric: tabular-nums;
+          font-weight: 700;
+        }
+
+        .plans-table-saving {
+          color: var(--plans-primary);
+          font-variant-numeric: tabular-nums;
+          font-weight: 800;
+        }
+
+        .plans-comparison-footnote {
+          margin: 14px 0 0;
+          color: var(--plans-muted);
+          font-size: 12px;
+          line-height: 1.6;
+        }
+
         @media (max-width: 860px) {
           .plans-heading {
             grid-template-columns: 1fr;
@@ -364,6 +549,15 @@ const PricingPlans = () => {
 
           .plans-grid {
             grid-template-columns: 1fr;
+          }
+
+          .plans-comparison-header {
+            grid-template-columns: 1fr;
+            align-items: start;
+          }
+
+          .plans-comparison-benchmark {
+            text-align: left;
           }
 
           .plan-card {
@@ -379,6 +573,10 @@ const PricingPlans = () => {
 
           .plan-card {
             padding: 24px;
+          }
+
+          .plans-comparison {
+            padding: 20px;
           }
 
           .plan-subtitle {
@@ -406,7 +604,7 @@ const PricingPlans = () => {
             <h1 className='plans-title'>{t('选择适合你的价格方案')}</h1>
             <p className='plans-description'>
               {t(
-                '低频调用可以按量付费；重度使用可以选择无限战争套餐，按固定周期获得更高额度。',
+                '低频调用可以按量付费；重度使用可以选择 VIP 套餐，按固定周期获得更高额度。',
               )}
             </p>
           </div>
@@ -429,7 +627,7 @@ const PricingPlans = () => {
                 {plan.highlighted && (
                   <div className='plan-badge'>
                     <Check size={13} />
-                    {t('重度推荐')}
+                    {t('推荐')}
                   </div>
                 )}
 
@@ -466,6 +664,68 @@ const PricingPlans = () => {
               </article>
             );
           })}
+        </section>
+
+        <section
+          className='plans-comparison'
+          aria-label={t('顶级模型价格对比')}
+        >
+          <div className='plans-comparison-header'>
+            <div>
+              <h2 className='plans-comparison-title'>
+                {t('顶级模型价格对比')}
+              </h2>
+              <p className='plans-comparison-desc'>
+                {t(
+                  '以 GPT-5.4 为基准，分别按按量付费倍率和 VIP 倍率，对比国内顶级大模型原价，直接展示便宜多少倍。',
+                )}
+              </p>
+            </div>
+            <div className='plans-comparison-benchmark'>
+              <span>{t('GPT-5.4 基准价')}</span>
+              {t('按量付费')}: {formatUsd(GPT54_PAY_AS_YOU_GO_PRICING.input)} /{' '}
+              {formatUsd(GPT54_PAY_AS_YOU_GO_PRICING.output)}
+              <br />
+              {t('VIP')}: {formatUsd(GPT54_VIP_PRICING.input)} /{' '}
+              {formatUsd(GPT54_VIP_PRICING.output)}
+            </div>
+          </div>
+
+          <div className='plans-table-wrap'>
+            <table className='plans-table'>
+              <thead>
+                <tr>
+                  <th>{t('对比模型')}</th>
+                  <th>{t('国内模型原价 / 1M tokens')}</th>
+                  <th>{t('按量付费')}</th>
+                  <th>{t('VIP')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {PRICE_COMPARISONS.map((item) => (
+                  <tr key={item.model}>
+                    <td className='plans-table-model'>{t(item.model)}</td>
+                    <td className='plans-table-price'>
+                      {t('输入')} {formatUsd(item.inputPrice)} / {t('输出')}{' '}
+                      {formatUsd(item.outputPrice)}
+                    </td>
+                    <td className='plans-table-saving'>
+                      {formatProfileComparison(item.payAsYouGoSaving, t)}
+                    </td>
+                    <td className='plans-table-saving'>
+                      {formatProfileComparison(item.vipSaving, t)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className='plans-comparison-footnote'>
+            {t(
+              '注：表内价格单位为美元 / 1M tokens；按量付费按 GPT-5.4 标准价 2% 计算，VIP 按 GPT-5.4 标准价 1.8% 计算。',
+            )}
+          </p>
         </section>
 
         <p className='plans-note'>
