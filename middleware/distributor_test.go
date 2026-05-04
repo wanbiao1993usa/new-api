@@ -38,3 +38,20 @@ func TestIsModelAllowedByTokenLimitKeepsDirectModelMatching(t *testing.T) {
 		t.Fatal("expected unrelated model to be denied")
 	}
 }
+
+func TestValidateImageModelForDistributionRejectsTextModelsBeforeChannelSelection(t *testing.T) {
+	for _, modelName := range []string{"gpt-5.5", "gpt5.5", "gpt-5-mini", "gpt5-mini"} {
+		if err := validateImageModelForDistribution("/v1/images/generations", modelName); err == nil {
+			t.Fatalf("expected %s to be rejected on image generation path", modelName)
+		}
+	}
+}
+
+func TestValidateImageModelForDistributionAllowsImageModelsAndOtherPaths(t *testing.T) {
+	if err := validateImageModelForDistribution("/v1/images/generations", "gpt-image-1"); err != nil {
+		t.Fatalf("expected image model to be allowed, got %v", err)
+	}
+	if err := validateImageModelForDistribution("/v1/chat/completions", "gpt-5.5"); err != nil {
+		t.Fatalf("expected text model to be allowed on chat path, got %v", err)
+	}
+}

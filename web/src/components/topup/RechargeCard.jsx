@@ -692,7 +692,7 @@ const RechargeCard = ({
                   onClick={topUp}
                   loading={isSubmitting}
                 >
-                  {t('兑换额度')}
+                  {t('兑换')}
                 </Button>
               </div>
             }

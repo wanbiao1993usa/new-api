@@ -52,6 +52,10 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if err := validateImageModelForDistribution(c.Request.URL.Path, modelRequest.Model); err != nil {
+			abortWithOpenAiMessage(c, http.StatusBadRequest, err.Error(), types.ErrorCodeInvalidRequest)
+			return
+		}
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {
@@ -177,6 +181,18 @@ func Distribute() func(c *gin.Context) {
 			service.RecordChannelAffinity(c, channel.Id)
 		}
 	}
+}
+
+func validateImageModelForDistribution(path string, modelName string) error {
+	if !isImageRelayRequestPath(path) || !common.IsDisallowedImageGenerationTextModel(modelName) {
+		return nil
+	}
+	return fmt.Errorf("model %s is not supported for image generation", modelName)
+}
+
+func isImageRelayRequestPath(path string) bool {
+	return strings.HasPrefix(path, "/v1/images/generations") ||
+		strings.HasPrefix(path, "/v1/images/edits")
 }
 
 // getModelFromRequest 从请求中读取模型信息

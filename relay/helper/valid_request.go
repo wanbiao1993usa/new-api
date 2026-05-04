@@ -1,7 +1,6 @@
 package helper
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -156,7 +155,11 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 			imageRequest.Quality = formData.Get("quality")
 			imageRequest.Size = formData.Get("size")
 			if imageValue := formData.Get("image"); imageValue != "" {
-				imageRequest.Image, _ = json.Marshal(imageValue)
+				imageRequest.Image, _ = common.Marshal(imageValue)
+			}
+
+			if err := validateImageModelForImageEndpoint(imageRequest.Model); err != nil {
+				return nil, err
 			}
 
 			if imageRequest.Model == "gpt-image-1" {
@@ -185,6 +188,9 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 		if imageRequest.Model == "" {
 			//imageRequest.Model = "dall-e-3"
 			return nil, errors.New("model is required")
+		}
+		if err := validateImageModelForImageEndpoint(imageRequest.Model); err != nil {
+			return nil, err
 		}
 
 		if strings.Contains(imageRequest.Size, "×") {
@@ -225,6 +231,13 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 	}
 
 	return imageRequest, nil
+}
+
+func validateImageModelForImageEndpoint(modelName string) error {
+	if common.IsDisallowedImageGenerationTextModel(modelName) {
+		return fmt.Errorf("model %s is not supported for image generation", modelName)
+	}
+	return nil
 }
 
 func GetAndValidateClaudeRequest(c *gin.Context) (textRequest *dto.ClaudeRequest, err error) {

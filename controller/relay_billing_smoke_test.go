@@ -151,6 +151,7 @@ func TestRelayBillingSmokeStreamChatCompletionUsesSubscription(t *testing.T) {
 func TestRelayBillingSmokeOtherOpenAICompatibleRelayTypesUseSubscription(t *testing.T) {
 	tests := []struct {
 		name         string
+		model        string
 		path         string
 		upstreamPath string
 		payload      map[string]any
@@ -178,10 +179,11 @@ func TestRelayBillingSmokeOtherOpenAICompatibleRelayTypesUseSubscription(t *test
 		},
 		{
 			name:         "image-generations",
+			model:        "gpt-image-1",
 			path:         "/v1/images/generations",
 			upstreamPath: "/v1/images/generations",
 			payload: map[string]any{
-				"model":  relaySmokeModel,
+				"model":  "gpt-image-1",
 				"prompt": "draw a square",
 				"n":      1,
 				"size":   "1024x1024",
@@ -215,13 +217,17 @@ func TestRelayBillingSmokeOtherOpenAICompatibleRelayTypesUseSubscription(t *test
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			upstream, hits := newOpenAIPathSmokeUpstream(t, tt.upstreamPath, tt.response)
+			modelName := tt.model
+			if modelName == "" {
+				modelName = relaySmokeModel
+			}
+			upstream, hits := newOpenAIPathSmokeUpstream(t, tt.upstreamPath, modelName, tt.response)
 			env := setupRelayBillingSmokeEnv(t)
 
 			tokenKey := strings.ReplaceAll(tt.name, "-", "") + "smoke"
 			user, token := createRelaySmokeUser(t, env.db, "sub-only", tokenKey, "wallet_first", 100_000)
-			_, sub := createRelaySmokeSubscription(t, env.db, user.Id, relaySmokeModel, 10_000)
-			createRelaySmokeChannel(t, "sub-only", upstream.URL)
+			_, sub := createRelaySmokeSubscription(t, env.db, user.Id, modelName, 10_000)
+			createRelaySmokeChannelWithModels(t, "sub-only", upstream.URL, modelName)
 
 			recorder := performRelaySmokeJSONRequest(t, env.router, token.Key, tt.path, tt.payload)
 			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
@@ -551,7 +557,7 @@ func newOpenAIStreamSmokeUpstream(t *testing.T) (*httptest.Server, *atomic.Int32
 	return server, hits
 }
 
-func newOpenAIPathSmokeUpstream(t *testing.T, path string, response string) (*httptest.Server, *atomic.Int32) {
+func newOpenAIPathSmokeUpstream(t *testing.T, path string, expectedModel string, response string) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 
 	hits := &atomic.Int32{}
@@ -562,7 +568,7 @@ func newOpenAIPathSmokeUpstream(t *testing.T, path string, response string) (*ht
 
 		var upstreamRequest map[string]any
 		require.NoError(t, common.DecodeJson(r.Body, &upstreamRequest))
-		require.Equal(t, relaySmokeModel, upstreamRequest["model"])
+		require.Equal(t, expectedModel, upstreamRequest["model"])
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(response))
@@ -658,6 +664,10 @@ func createRelaySmokeSubscription(t *testing.T, db *gorm.DB, userID int, modelNa
 }
 
 func createRelaySmokeChannel(t *testing.T, group, baseURL string) *model.Channel {
+	return createRelaySmokeChannelWithModels(t, group, baseURL, relaySmokeModel)
+}
+
+func createRelaySmokeChannelWithModels(t *testing.T, group, baseURL, models string) *model.Channel {
 	t.Helper()
 
 	priority := int64(0)
@@ -669,7 +679,7 @@ func createRelaySmokeChannel(t *testing.T, group, baseURL string) *model.Channel
 		Status:   common.ChannelStatusEnabled,
 		Name:     fmt.Sprintf("%s smoke channel", group),
 		BaseURL:  &baseURL,
-		Models:   relaySmokeModel,
+		Models:   models,
 		Group:    group,
 		Priority: &priority,
 		Weight:   &weight,

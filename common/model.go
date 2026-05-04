@@ -57,3 +57,14 @@ func IsOpenAITextModel(modelName string) bool {
 	}
 	return false
 }
+
+func IsDisallowedImageGenerationTextModel(modelName string) bool {
+	modelName = strings.TrimSpace(strings.ToLower(modelName))
+	if modelName == "" || IsImageGenerationModel(modelName) {
+		return false
+	}
+	if strings.HasPrefix(modelName, "gpt-image-") {
+		return false
+	}
+	return IsOpenAITextModel(modelName) || strings.HasPrefix(modelName, "gpt")
+}

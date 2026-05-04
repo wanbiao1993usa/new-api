@@ -128,12 +128,11 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		}
 	}
 
-	if usage.(*dto.Usage).TotalTokens == 0 {
-		usage.(*dto.Usage).TotalTokens = 1
+	imageUsage, ok := usage.(*dto.Usage)
+	if !ok {
+		return types.NewErrorWithStatusCode(fmt.Errorf("invalid usage type, expected *dto.Usage, got %T", usage), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
-	if usage.(*dto.Usage).PromptTokens == 0 {
-		usage.(*dto.Usage).PromptTokens = 1
-	}
+	normalizeImageUsageForBilling(info, request, imageUsage)
 
 	quality := "standard"
 	if request.Quality == "hd" {
@@ -152,6 +151,54 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		logContent = append(logContent, fmt.Sprintf("生成数量 %d", imageN))
 	}
 
-	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
+	service.PostTextConsumeQuota(c, info, imageUsage, logContent)
 	return nil
+}
+
+func normalizeImageUsageForBilling(info *relaycommon.RelayInfo, request *dto.ImageRequest, usage *dto.Usage) {
+	if usage == nil {
+		return
+	}
+
+	if usage.PromptTokens+usage.CompletionTokens > 0 {
+		if usage.TotalTokens == 0 {
+			usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+		}
+		return
+	}
+
+	if usage.TotalTokens > 0 {
+		usage.CompletionTokens = usage.TotalTokens
+		usage.CompletionTokenDetails.ImageTokens = usage.TotalTokens
+		return
+	}
+
+	if info != nil && info.PriceData.UsePrice {
+		usage.PromptTokens = 1
+		usage.TotalTokens = 1
+		return
+	}
+
+	promptTokens := 0
+	if info != nil {
+		promptTokens = info.GetEstimatePromptTokens()
+	}
+	if promptTokens <= 0 {
+		promptTokens = 1
+	}
+
+	completionTokens := 0
+	if request != nil {
+		if meta := request.GetTokenCountMeta(); meta != nil && meta.MaxTokens > 0 {
+			completionTokens = meta.MaxTokens
+		}
+	}
+
+	usage.PromptTokens = promptTokens
+	usage.CompletionTokens = completionTokens
+	usage.TotalTokens = promptTokens + completionTokens
+	usage.PromptTokensDetails.TextTokens = promptTokens
+	if completionTokens > 0 {
+		usage.CompletionTokenDetails.ImageTokens = completionTokens
+	}
 }

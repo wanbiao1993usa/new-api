@@ -670,6 +670,7 @@
     "先搜索，再一键复制字段名或填入当前规则。字段名为系统内部路径，可直接用于路径 / 来源 / 目标。": "Recherchez d'abord, puis copiez les noms de champs ou remplissez la règle actuelle en un clic. Les noms de champs sont des chemins internes du système, utilisables directement pour chemin / source / cible.",
     "免责声明：仅限个人使用，请勿分发或共享任何凭证。该渠道存在前置条件与使用门槛，请在充分了解流程与风险后使用，并遵守 OpenAI 的相关条款与政策。相关凭证与配置仅限接入 Codex CLI 使用，不适用于其他客户端、平台或渠道。": "Avertissement : usage personnel uniquement. Ne distribuez ni ne partagez aucun identifiant. Ce canal a des prérequis et nécessite une configuration préalable ; utilisez‑le uniquement si vous comprenez la procédure et les risques, et respectez les conditions et politiques d’OpenAI. Les identifiants et la configuration sont réservés à l’intégration Codex CLI et ne sont pas destinés à d’autres clients, plateformes ou canaux.",
     "兑换人ID": "ID du demandeur",
+    "兑换": "Échanger",
     "兑换成功！": "Échange réussi !",
     "兑换码充值": "Recharge par code d'échange",
     "兑换码创建成功": "Code d'échange créé",

@@ -81,16 +81,21 @@ func AddRedemption(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
 		return
 	}
+	if !validateRedemptionPayload(c, &redemption) {
+		return
+	}
 	var keys []string
 	for i := 0; i < redemption.Count; i++ {
 		key := common.GetUUID()
 		cleanRedemption := model.Redemption{
-			UserId:      c.GetInt("id"),
-			Name:        redemption.Name,
-			Key:         key,
-			CreatedTime: common.GetTimestamp(),
-			Quota:       redemption.Quota,
-			ExpiredTime: redemption.ExpiredTime,
+			UserId:             c.GetInt("id"),
+			Name:               redemption.Name,
+			Key:                key,
+			CreatedTime:        common.GetTimestamp(),
+			Quota:              redemption.Quota,
+			Type:               model.NormalizeRedemptionType(redemption.Type),
+			SubscriptionPlanId: redemption.SubscriptionPlanId,
+			ExpiredTime:        redemption.ExpiredTime,
 		}
 		err = cleanRedemption.Insert()
 		if err != nil {
@@ -140,13 +145,22 @@ func UpdateRedemption(c *gin.Context) {
 		return
 	}
 	if statusOnly == "" {
+		if cleanRedemption.Status == common.RedemptionCodeStatusUsed {
+			common.ApiErrorMsg(c, "已使用兑换码不能修改")
+			return
+		}
 		if valid, msg := validateExpiredTime(c, redemption.ExpiredTime); !valid {
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
+			return
+		}
+		if !validateRedemptionPayload(c, &redemption) {
 			return
 		}
 		// If you add more fields, please also update redemption.Update()
 		cleanRedemption.Name = redemption.Name
 		cleanRedemption.Quota = redemption.Quota
+		cleanRedemption.Type = model.NormalizeRedemptionType(redemption.Type)
+		cleanRedemption.SubscriptionPlanId = redemption.SubscriptionPlanId
 		cleanRedemption.ExpiredTime = redemption.ExpiredTime
 	}
 	if statusOnly != "" {
@@ -184,4 +198,35 @@ func validateExpiredTime(c *gin.Context, expired int64) (bool, string) {
 		return false, i18n.T(c, i18n.MsgRedemptionExpireTimeInvalid)
 	}
 	return true, ""
+}
+
+func validateRedemptionPayload(c *gin.Context, redemption *model.Redemption) bool {
+	redemption.Type = model.NormalizeRedemptionType(redemption.Type)
+	switch redemption.Type {
+	case model.RedemptionTypeSubscription:
+		if redemption.SubscriptionPlanId <= 0 {
+			common.ApiErrorMsg(c, "请选择订阅套餐")
+			return false
+		}
+		plan, err := model.GetSubscriptionPlanById(redemption.SubscriptionPlanId)
+		if err != nil {
+			common.ApiErrorMsg(c, "订阅套餐不存在")
+			return false
+		}
+		if !plan.Enabled {
+			common.ApiErrorMsg(c, "套餐未启用")
+			return false
+		}
+		redemption.Quota = 0
+	case model.RedemptionTypeQuota:
+		if redemption.Quota <= 0 {
+			common.ApiErrorMsg(c, "额度必须大于0")
+			return false
+		}
+		redemption.SubscriptionPlanId = 0
+	default:
+		common.ApiErrorMsg(c, "无效的兑换码类型")
+		return false
+	}
+	return true
 }

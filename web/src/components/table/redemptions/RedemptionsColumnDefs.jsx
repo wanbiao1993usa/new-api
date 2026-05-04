@@ -24,6 +24,8 @@ import { renderQuota, timestamp2string } from '../../../helpers';
 import {
   REDEMPTION_STATUS,
   REDEMPTION_STATUS_MAP,
+  REDEMPTION_TYPE,
+  REDEMPTION_TYPE_MAP,
   REDEMPTION_ACTIONS,
 } from '../../../constants/redemption.constants';
 
@@ -73,6 +75,25 @@ const renderStatus = (status, record, t) => {
   );
 };
 
+const renderType = (type, record, t) => {
+  const normalizedType = type || REDEMPTION_TYPE.QUOTA;
+  const typeConfig =
+    REDEMPTION_TYPE_MAP[normalizedType] ||
+    REDEMPTION_TYPE_MAP[REDEMPTION_TYPE.QUOTA];
+  return (
+    <div className='flex flex-col gap-1'>
+      <Tag color={typeConfig.color} shape='circle'>
+        {t(typeConfig.text)}
+      </Tag>
+      {normalizedType === REDEMPTION_TYPE.SUBSCRIPTION && (
+        <span className='text-xs text-gray-500'>
+          {t('套餐')} #{record.subscription_plan_id || '-'}
+        </span>
+      )}
+    </div>
+  );
+};
+
 /**
  * Get redemption code table column definitions
  */
@@ -105,9 +126,23 @@ export const getRedemptionsColumns = ({
       },
     },
     {
+      title: t('类型'),
+      dataIndex: 'type',
+      key: 'type',
+      render: (text, record) => {
+        return <div>{renderType(text, record, t)}</div>;
+      },
+    },
+    {
       title: t('额度'),
       dataIndex: 'quota',
-      render: (text) => {
+      render: (text, record) => {
+        if (
+          (record.type || REDEMPTION_TYPE.QUOTA) ===
+          REDEMPTION_TYPE.SUBSCRIPTION
+        ) {
+          return <div>{t('不适用')}</div>;
+        }
         return (
           <div>
             <Tag color='grey' shape='circle'>

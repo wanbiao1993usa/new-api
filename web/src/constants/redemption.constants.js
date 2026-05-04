@@ -23,6 +23,22 @@ export const REDEMPTION_STATUS = {
   USED: 3, // Used
 };
 
+export const REDEMPTION_TYPE = {
+  QUOTA: 'quota',
+  SUBSCRIPTION: 'subscription',
+};
+
+export const REDEMPTION_TYPE_MAP = {
+  [REDEMPTION_TYPE.QUOTA]: {
+    color: 'blue',
+    text: '额度',
+  },
+  [REDEMPTION_TYPE.SUBSCRIPTION]: {
+    color: 'purple',
+    text: '订阅',
+  },
+};
+
 // Redemption code status display mapping
 export const REDEMPTION_STATUS_MAP = {
   [REDEMPTION_STATUS.UNUSED]: {
