@@ -36,6 +36,7 @@ import Token from './pages/Token';
 import Redemption from './pages/Redemption';
 import TopUp from './pages/TopUp';
 import Log from './pages/Log';
+import BillingAnalysis from './pages/BillingAnalysis';
 import Chat from './pages/Chat';
 import Chat2Link from './pages/Chat2Link';
 import Midjourney from './pages/Midjourney';
@@ -292,6 +293,14 @@ function App() {
           element={
             <PrivateRoute>
               <Log />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/billing-analysis'
+          element={
+            <PrivateRoute>
+              <BillingAnalysis />
             </PrivateRoute>
           }
         />

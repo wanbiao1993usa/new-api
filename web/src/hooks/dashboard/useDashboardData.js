@@ -44,7 +44,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     token_name: '',
     model_name: '',
     start_timestamp: getInitialTimestamp(),
-    end_timestamp: timestamp2string(new Date().getTime() / 1000 + 3600),
+    end_timestamp: timestamp2string(new Date().getTime() / 1000),
     channel: '',
     data_export_default_time: '',
   });
@@ -219,7 +219,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
       const { start_timestamp, end_timestamp } = inputs;
       const localStartTimestamp = Date.parse(start_timestamp) / 1000;
       const localEndTimestamp = Date.parse(end_timestamp) / 1000;
-      const url = `/api/data/users?start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}`;
+      const url = `/api/data/users?start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&default_time=${dataExportDefaultTime}`;
       const res = await API.get(url);
       const { success, message, data } = res.data;
       if (success) {
@@ -232,7 +232,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
       console.error(err);
       return [];
     }
-  }, [inputs, isAdminUser]);
+  }, [inputs, dataExportDefaultTime, isAdminUser]);
 
   const getUserData = useCallback(async () => {
     let res = await API.get(`/api/user/self`);

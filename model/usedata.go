@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -19,6 +20,22 @@ type QuotaData struct {
 	TokenUsed int    `json:"token_used" gorm:"default:0"`
 	Count     int    `json:"count" gorm:"default:0"`
 	Quota     int    `json:"quota" gorm:"default:0"`
+}
+
+type dashboardQuotaGroupMode int
+
+const (
+	dashboardQuotaGroupByModel dashboardQuotaGroupMode = iota
+	dashboardQuotaGroupByUser
+)
+
+type dashboardQuotaDataFilters struct {
+	StartTime   int64
+	EndTime     int64
+	UserID      int
+	Username    string
+	DefaultTime string
+	GroupMode   dashboardQuotaGroupMode
 }
 
 func UpdateQuotaData() {
@@ -101,38 +118,144 @@ func increaseQuotaData(userId int, username string, modelName string, count int,
 	}
 }
 
-func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
-	var quotaDatas []*QuotaData
-	// 从quota_data表中查询数据
-	err = DB.Table("quota_data").Where("username = ? and created_at >= ? and created_at <= ?", username, startTime, endTime).Find(&quotaDatas).Error
-	return quotaDatas, err
+func GetQuotaDataByUsername(username string, startTime int64, endTime int64, defaultTime ...string) (quotaData []*QuotaData, err error) {
+	return getDashboardQuotaDataFromLogs(dashboardQuotaDataFilters{
+		StartTime:   startTime,
+		EndTime:     endTime,
+		Username:    username,
+		DefaultTime: firstDashboardDefaultTime(defaultTime),
+		GroupMode:   dashboardQuotaGroupByModel,
+	})
 }
 
-func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
-	var quotaDatas []*QuotaData
-	// 从quota_data表中查询数据
-	err = DB.Table("quota_data").Where("user_id = ? and created_at >= ? and created_at <= ?", userId, startTime, endTime).Find(&quotaDatas).Error
-	return quotaDatas, err
+func GetQuotaDataByUserId(userId int, startTime int64, endTime int64, defaultTime ...string) (quotaData []*QuotaData, err error) {
+	return getDashboardQuotaDataFromLogs(dashboardQuotaDataFilters{
+		StartTime:   startTime,
+		EndTime:     endTime,
+		UserID:      userId,
+		DefaultTime: firstDashboardDefaultTime(defaultTime),
+		GroupMode:   dashboardQuotaGroupByModel,
+	})
 }
 
-func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
-	var quotaDatas []*QuotaData
-	err = DB.Table("quota_data").
-		Select("username, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
-		Where("created_at >= ? and created_at <= ?", startTime, endTime).
-		Group("username, created_at").
-		Find(&quotaDatas).Error
-	return quotaDatas, err
+func GetQuotaDataGroupByUser(startTime int64, endTime int64, defaultTime ...string) (quotaData []*QuotaData, err error) {
+	return getDashboardQuotaDataFromLogs(dashboardQuotaDataFilters{
+		StartTime:   startTime,
+		EndTime:     endTime,
+		DefaultTime: firstDashboardDefaultTime(defaultTime),
+		GroupMode:   dashboardQuotaGroupByUser,
+	})
 }
 
-func GetAllQuotaDates(startTime int64, endTime int64, username string) (quotaData []*QuotaData, err error) {
+func GetAllQuotaDates(startTime int64, endTime int64, username string, defaultTime ...string) (quotaData []*QuotaData, err error) {
 	if username != "" {
-		return GetQuotaDataByUsername(username, startTime, endTime)
+		return GetQuotaDataByUsername(username, startTime, endTime, defaultTime...)
 	}
-	var quotaDatas []*QuotaData
-	// 从quota_data表中查询数据
-	// only select model_name, sum(count) as count, sum(quota) as quota, model_name, created_at from quota_data group by model_name, created_at;
-	//err = DB.Table("quota_data").Where("created_at >= ? and created_at <= ?", startTime, endTime).Find(&quotaDatas).Error
-	err = DB.Table("quota_data").Select("model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, created_at").Where("created_at >= ? and created_at <= ?", startTime, endTime).Group("model_name, created_at").Find(&quotaDatas).Error
-	return quotaDatas, err
+	return getDashboardQuotaDataFromLogs(dashboardQuotaDataFilters{
+		StartTime:   startTime,
+		EndTime:     endTime,
+		DefaultTime: firstDashboardDefaultTime(defaultTime),
+		GroupMode:   dashboardQuotaGroupByModel,
+	})
+}
+
+func firstDashboardDefaultTime(defaultTime []string) string {
+	if len(defaultTime) == 0 || defaultTime[0] == "" {
+		return common.DataExportDefaultTime
+	}
+	return defaultTime[0]
+}
+
+func dashboardBucketSize(defaultTime string) int64 {
+	switch defaultTime {
+	case "week":
+		return 604800
+	case "day":
+		return 86400
+	default:
+		return 3600
+	}
+}
+
+func dashboardBucketTimestamp(createdAt int64, defaultTime string) int64 {
+	bucketSize := dashboardBucketSize(defaultTime)
+	if bucketSize <= 0 {
+		return createdAt
+	}
+	return createdAt - (createdAt % bucketSize)
+}
+
+func getDashboardQuotaDataFromLogs(filters dashboardQuotaDataFilters) ([]*QuotaData, error) {
+	tx := LOG_DB.Model(&Log{}).
+		Select([]string{"user_id", "username", "model_name", "created_at", "quota", "prompt_tokens", "completion_tokens", "other"}).
+		Where("type = ?", LogTypeConsume)
+
+	if filters.UserID > 0 {
+		tx = tx.Where("user_id = ?", filters.UserID)
+	}
+	if filters.Username != "" {
+		tx = tx.Where("username = ?", filters.Username)
+	}
+	if filters.StartTime != 0 {
+		tx = tx.Where("created_at >= ?", filters.StartTime)
+	}
+	if filters.EndTime != 0 {
+		tx = tx.Where("created_at <= ?", filters.EndTime)
+	}
+
+	rows, err := tx.Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	grouped := make(map[string]*QuotaData)
+	for rows.Next() {
+		var log Log
+		if err := LOG_DB.ScanRows(rows, &log); err != nil {
+			return nil, err
+		}
+		bucketAt := dashboardBucketTimestamp(log.CreatedAt, filters.DefaultTime)
+		keyName := log.ModelName
+		if filters.GroupMode == dashboardQuotaGroupByUser {
+			keyName = log.Username
+		}
+		key := fmt.Sprintf("%s-%d", keyName, bucketAt)
+		row, ok := grouped[key]
+		if !ok {
+			row = &QuotaData{
+				UserID:    log.UserId,
+				Username:  log.Username,
+				ModelName: log.ModelName,
+				CreatedAt: bucketAt,
+			}
+			if filters.GroupMode == dashboardQuotaGroupByUser {
+				row.ModelName = ""
+			}
+			grouped[key] = row
+		}
+
+		walletQuota, subscriptionQuota := splitBillingAnalysisQuota(log)
+		row.Count += 1
+		row.Quota += int(walletQuota + subscriptionQuota)
+		row.TokenUsed += log.PromptTokens + log.CompletionTokens
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	quotaData := make([]*QuotaData, 0, len(grouped))
+	for _, row := range grouped {
+		quotaData = append(quotaData, row)
+	}
+	sort.Slice(quotaData, func(i, j int) bool {
+		if quotaData[i].CreatedAt != quotaData[j].CreatedAt {
+			return quotaData[i].CreatedAt < quotaData[j].CreatedAt
+		}
+		if filters.GroupMode == dashboardQuotaGroupByUser {
+			return quotaData[i].Username < quotaData[j].Username
+		}
+		return quotaData[i].ModelName < quotaData[j].ModelName
+	})
+	return quotaData, nil
 }

@@ -40,6 +40,7 @@ const routerMap = {
   subscription: '/console/subscription',
   system_log: '/console/system-log',
   log: '/console/log',
+  billing_analysis: '/console/billing-analysis',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
   about: '/about',
@@ -89,6 +90,11 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('使用日志'),
         itemKey: 'log',
         to: '/log',
+      },
+      {
+        text: t('计费分析'),
+        itemKey: 'billing_analysis',
+        to: '/billing-analysis',
       },
       {
         text: t('绘图日志'),

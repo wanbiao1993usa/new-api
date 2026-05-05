@@ -41,6 +41,7 @@ const PLANS = [
     actionTo: '/console/topup',
     features: [
       '先充值后使用',
+      '相当于 0.146元/1美元',
       '按 API Token 所选分组计费',
       '余额不足时停止扣费',
       '可随时创建多个分组 Token',
@@ -56,7 +57,12 @@ const PLANS = [
     actionText: '立即订阅',
     actionTo: '/console/topup?tab=subscription',
     highlighted: true,
-    features: ['有效期: 1 个月', '总额度: $11111.00', '升级分组: VIP'],
+    features: [
+      '有效期: 1 个月',
+      '总额度: $11111.00',
+      '额度不清零',
+      '升级分组: VIP',
+    ],
   },
   {
     key: 'custom',
