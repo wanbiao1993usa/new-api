@@ -55,8 +55,6 @@ const { Text } = Typography;
 
 const unlimitedPlanTaobaoLink =
   'https://item.taobao.com/item.htm?ft=t&id=1045345459005';
-const redemptionCodeTaobaoLink =
-  'https://item.taobao.com/item.htm?ft=t&id=1045345459005';
 
 const RechargeCard = ({
   t,
@@ -652,15 +650,14 @@ const RechargeCard = ({
               </div>
             </div>
           </div>
-          <a
-            href={redemptionCodeTaobaoLink}
-            target='_blank'
-            rel='noopener noreferrer'
-            className='inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 self-start sm:self-auto'
+          <button
+            type='button'
+            onClick={openTopUpLink}
+            className='inline-flex h-9 shrink-0 items-center justify-center rounded-lg border-0 bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 self-start sm:self-auto'
           >
             <ExternalLink size={16} className='mr-2' />
             {t('购买兑换码')}
-          </a>
+          </button>
         </div>
       </div>
 
