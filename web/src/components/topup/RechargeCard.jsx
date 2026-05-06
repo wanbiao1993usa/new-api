@@ -87,7 +87,6 @@ const RechargeCard = ({
   topUp,
   isSubmitting,
   topUpLink,
-  openTopUpLink,
   userState,
   renderQuota,
   statusLoading,
@@ -702,14 +701,15 @@ const RechargeCard = ({
               topUpLink && (
                 <Text type='tertiary'>
                   {t('在找兑换码？')}
-                  <Text
-                    type='secondary'
-                    underline
-                    className='cursor-pointer'
-                    onClick={openTopUpLink}
+                  <a
+                    href={redemptionCodeTaobaoLink}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    className='cursor-pointer underline'
+                    style={{ color: 'var(--semi-color-text-2)' }}
                   >
                     {t('购买兑换码')}
-                  </Text>
+                  </a>
                 </Text>
               )
             }

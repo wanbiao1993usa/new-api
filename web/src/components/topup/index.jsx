@@ -213,14 +213,6 @@ const TopUp = () => {
     }
   };
 
-  const openTopUpLink = () => {
-    if (!topUpLink) {
-      showError(t('超级管理员未设置充值链接！'));
-      return;
-    }
-    window.open(topUpLink, '_blank');
-  };
-
   const preTopUp = async (payment) => {
     if (payment === 'stripe') {
       if (!enableStripeTopUp) {
@@ -1006,7 +998,6 @@ const TopUp = () => {
           topUp={topUp}
           isSubmitting={isSubmitting}
           topUpLink={topUpLink}
-          openTopUpLink={openTopUpLink}
           userState={userState}
           renderQuota={renderQuota}
           statusLoading={statusLoading}
