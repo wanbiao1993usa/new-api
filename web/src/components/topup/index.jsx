@@ -227,7 +227,10 @@ const TopUp = () => {
   const openUnlimitedPlanLink = () => {
     const normalizedLink = unlimitedPlanLink.trim();
     if (!normalizedLink) {
-      showError(t('暂无此套餐。'));
+      Modal.info({
+        title: t('暂无此套餐。'),
+        centered: true,
+      });
       return;
     }
     window.open(normalizedLink, '_blank');
