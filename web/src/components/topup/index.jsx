@@ -56,6 +56,9 @@ const TopUp = () => {
   const [topUpLink, setTopUpLink] = useState(
     statusState?.status?.top_up_link || '',
   );
+  const [unlimitedPlanLink, setUnlimitedPlanLink] = useState(
+    statusState?.status?.unlimited_plan_link || '',
+  );
   const [enableOnlineTopUp, setEnableOnlineTopUp] = useState(
     statusState?.status?.enable_online_topup || false,
   );
@@ -219,6 +222,15 @@ const TopUp = () => {
       return;
     }
     window.open(topUpLink, '_blank');
+  };
+
+  const openUnlimitedPlanLink = () => {
+    const normalizedLink = unlimitedPlanLink.trim();
+    if (!normalizedLink) {
+      showError(t('暂无此套餐。'));
+      return;
+    }
+    window.open(normalizedLink, '_blank');
   };
 
   const preTopUp = async (payment) => {
@@ -798,6 +810,7 @@ const TopUp = () => {
       // setMinTopUp(minTopUpValue);
       // setTopUpCount(minTopUpValue);
       setTopUpLink(statusState.status.top_up_link || '');
+      setUnlimitedPlanLink(statusState.status.unlimited_plan_link || '');
       setPriceRatio(statusState.status.price || 1);
 
       setStatusLoading(false);
@@ -1007,6 +1020,7 @@ const TopUp = () => {
           isSubmitting={isSubmitting}
           topUpLink={topUpLink}
           openTopUpLink={openTopUpLink}
+          openUnlimitedPlanLink={openUnlimitedPlanLink}
           userState={userState}
           renderQuota={renderQuota}
           statusLoading={statusLoading}

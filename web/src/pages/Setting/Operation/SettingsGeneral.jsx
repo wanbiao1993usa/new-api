@@ -46,6 +46,7 @@ export default function GeneralSettings(props) {
   const [showQuotaWarning, setShowQuotaWarning] = useState(false);
   const [inputs, setInputs] = useState({
     TopUpLink: '',
+    UnlimitedPlanLink: '',
     'general_setting.docs_link': '',
     'general_setting.quota_display_type': 'USD',
     'general_setting.custom_currency_symbol': '¤',
@@ -254,6 +255,16 @@ export default function GeneralSettings(props) {
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.Input
+                  field={'UnlimitedPlanLink'}
+                  label={t('无限流量套餐购买链接')}
+                  initValue={''}
+                  placeholder={t('例如发卡网站的购买链接')}
+                  onChange={handleFieldChange('UnlimitedPlanLink')}
+                  showClear
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Input
                   field={'general_setting.docs_link'}
                   label={t('文档地址')}
                   initValue={''}
@@ -282,12 +293,8 @@ export default function GeneralSettings(props) {
                     'general_setting.quota_display_type',
                   )}
                 >
-                  <Form.Select.Option value='USD'>
-                    USD ($)
-                  </Form.Select.Option>
-                  <Form.Select.Option value='CNY'>
-                    CNY (¥)
-                  </Form.Select.Option>
+                  <Form.Select.Option value='USD'>USD ($)</Form.Select.Option>
+                  <Form.Select.Option value='CNY'>CNY (¥)</Form.Select.Option>
                   {showTokensOption && (
                     <Form.Select.Option value='TOKENS'>
                       Tokens
@@ -398,7 +405,9 @@ export default function GeneralSettings(props) {
                   field={'token_setting.max_user_tokens'}
                   step={1}
                   min={1}
-                  extraText={t('每个用户最多可创建的令牌数量，默认 1000，设置过大可能会影响性能')}
+                  extraText={t(
+                    '每个用户最多可创建的令牌数量，默认 1000，设置过大可能会影响性能',
+                  )}
                   placeholder={'1000'}
                   onChange={handleFieldChange('token_setting.max_user_tokens')}
                 />

@@ -40,6 +40,7 @@ const OperationSetting = () => {
 
     /* 通用设置 */
     TopUpLink: '',
+    UnlimitedPlanLink: '',
     'general_setting.docs_link': '',
     QuotaPerUnit: 0,
     USDExchangeRate: 0,
