@@ -54,9 +54,9 @@ import SubscriptionPlansCard from './SubscriptionPlansCard';
 const { Text } = Typography;
 
 const unlimitedPlanTaobaoLink =
-  'https://item.taobao.com/item.htm?ft=t&id=1044543995746';
+  'https://item.taobao.com/item.htm?ft=t&id=1045345459005';
 const redemptionCodeTaobaoLink =
-  'https://item.taobao.com/item.htm?ft=t&id=1046392000506';
+  'https://item.taobao.com/item.htm?ft=t&id=1045345459005';
 
 const RechargeCard = ({
   t,
