@@ -80,6 +80,12 @@ type billingAnalysisOverviewMeta struct {
 	EffectiveRatio float64
 }
 
+type billingAnalysisGroupRatioMeta struct {
+	Key   string
+	Label string
+	Ratio float64
+}
+
 func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions bool) (BillingAnalysisResult, error) {
 	var result BillingAnalysisResult
 
@@ -294,12 +300,10 @@ func finishBillingAnalysisOverviewItems(itemMap map[string]*BillingAnalysisOverv
 }
 
 func getBillingAnalysisOverviewMeta(other billingAnalysisLogOther) billingAnalysisOverviewMeta {
-	groupRatio := billingAnalysisEffectiveGroupRatio(other)
-	groupRatioKey := formatBillingAnalysisRatioKey(groupRatio)
-	groupRatioLabel := formatBillingAnalysisRatioLabel(groupRatio)
+	groupMeta := getBillingAnalysisGroupRatioMeta(other)
 
 	if other.BillingMode == "tiered_expr" {
-		key := "tiered:" + groupRatioKey
+		key := "tiered:" + groupMeta.Key
 		label := "阶梯计费"
 		if other.MatchedTier != "" {
 			key += ":" + other.MatchedTier
@@ -307,43 +311,56 @@ func getBillingAnalysisOverviewMeta(other billingAnalysisLogOther) billingAnalys
 		}
 		return billingAnalysisOverviewMeta{
 			Key:            key,
-			Label:          label + " / " + groupRatioLabel,
-			EffectiveRatio: groupRatio,
-		}
-	}
-
-	if other.ModelRatio != nil {
-		effectiveRatio := roundBillingAnalysisRatio(*other.ModelRatio * groupRatio)
-		return billingAnalysisOverviewMeta{
-			Key:            "ratio:" + formatBillingAnalysisRatioKey(effectiveRatio),
-			Label:          formatBillingAnalysisRatioLabel(effectiveRatio),
-			EffectiveRatio: effectiveRatio,
+			Label:          label + " / " + groupMeta.Label,
+			EffectiveRatio: groupMeta.Ratio,
 		}
 	}
 
 	if other.ModelPrice != nil {
 		return billingAnalysisOverviewMeta{
-			Key:            "fixed:" + groupRatioKey,
-			Label:          "固定价格 / " + groupRatioLabel,
-			EffectiveRatio: groupRatio,
+			Key:            "fixed:" + groupMeta.Key,
+			Label:          "固定价格 / " + groupMeta.Label,
+			EffectiveRatio: groupMeta.Ratio,
+		}
+	}
+
+	if other.ModelRatio != nil {
+		return billingAnalysisOverviewMeta{
+			Key:            groupMeta.Key,
+			Label:          groupMeta.Label,
+			EffectiveRatio: groupMeta.Ratio,
 		}
 	}
 
 	return billingAnalysisOverviewMeta{
-		Key:            "other:" + groupRatioKey,
-		Label:          "其他 / " + groupRatioLabel,
-		EffectiveRatio: groupRatio,
+		Key:            "other:" + groupMeta.Key,
+		Label:          groupMeta.Label,
+		EffectiveRatio: groupMeta.Ratio,
 	}
 }
 
-func billingAnalysisEffectiveGroupRatio(other billingAnalysisLogOther) float64 {
+func getBillingAnalysisGroupRatioMeta(other billingAnalysisLogOther) billingAnalysisGroupRatioMeta {
 	if other.UserGroupRatio != nil && *other.UserGroupRatio != -1 {
-		return roundBillingAnalysisRatio(*other.UserGroupRatio)
+		ratio := roundBillingAnalysisRatio(*other.UserGroupRatio)
+		return billingAnalysisGroupRatioMeta{
+			Key:   "group:" + formatBillingAnalysisRatioKey(ratio),
+			Label: "分组倍率 " + formatBillingAnalysisRatioLabel(ratio),
+			Ratio: ratio,
+		}
 	}
 	if other.GroupRatio != nil {
-		return roundBillingAnalysisRatio(*other.GroupRatio)
+		ratio := roundBillingAnalysisRatio(*other.GroupRatio)
+		return billingAnalysisGroupRatioMeta{
+			Key:   "group:" + formatBillingAnalysisRatioKey(ratio),
+			Label: "分组倍率 " + formatBillingAnalysisRatioLabel(ratio),
+			Ratio: ratio,
+		}
 	}
-	return 1
+	return billingAnalysisGroupRatioMeta{
+		Key:   "group:" + formatBillingAnalysisRatioKey(1),
+		Label: "分组倍率 " + formatBillingAnalysisRatioLabel(1),
+		Ratio: 1,
+	}
 }
 
 func roundBillingAnalysisRatio(value float64) float64 {

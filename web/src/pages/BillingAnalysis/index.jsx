@@ -285,7 +285,7 @@ const BillingAnalysis = () => {
       value: renderQuota(summary.wallet_quota),
       icon: Wallet,
       accentClassName: 'bg-emerald-100 text-emerald-700',
-      detailsTitle: t('倍率'),
+      detailsTitle: t('分组倍率'),
       details: buildOverviewDetails(summary.wallet_multiplier_overview),
     },
     {
@@ -294,7 +294,7 @@ const BillingAnalysis = () => {
       value: renderQuota(summary.subscription_quota),
       icon: CalendarClock,
       accentClassName: 'bg-sky-100 text-sky-700',
-      detailsTitle: t('倍率'),
+      detailsTitle: t('分组倍率'),
       details: buildOverviewDetails(summary.subscription_multiplier_overview),
     },
     {

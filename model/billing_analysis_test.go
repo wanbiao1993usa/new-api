@@ -409,7 +409,7 @@ func TestGetBillingAnalysisBuildsMultiplierOverview(t *testing.T) {
 		Other: common.MapToJsonStr(map[string]interface{}{
 			"billing_source":   "wallet",
 			"model_ratio":      2.0,
-			"group_ratio":      1.0,
+			"group_ratio":      0.5,
 			"user_group_ratio": -1.0,
 		}),
 	})
@@ -429,7 +429,27 @@ func TestGetBillingAnalysisBuildsMultiplierOverview(t *testing.T) {
 		Other: common.MapToJsonStr(map[string]interface{}{
 			"billing_source":   "wallet",
 			"model_ratio":      0.2,
-			"group_ratio":      1.0,
+			"group_ratio":      0.5,
+			"user_group_ratio": -1.0,
+		}),
+	})
+	insertBillingAnalysisLog(t, Log{
+		Id:               35,
+		UserId:           401,
+		Username:         "alice",
+		TokenName:        "token-e",
+		ModelName:        "gpt-4.1-mini",
+		ChannelId:        21,
+		Group:            "default",
+		CreatedAt:        2015,
+		Type:             LogTypeConsume,
+		Quota:            400,
+		PromptTokens:     20,
+		CompletionTokens: 20,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":   "wallet",
+			"model_ratio":      1.0,
+			"group_ratio":      0.25,
 			"user_group_ratio": -1.0,
 		}),
 	})
@@ -451,7 +471,7 @@ func TestGetBillingAnalysisBuildsMultiplierOverview(t *testing.T) {
 			"subscription_consumed": 1500,
 			"model_ratio":           2.0,
 			"group_ratio":           1.0,
-			"user_group_ratio":      1.5,
+			"user_group_ratio":      0.5,
 		}),
 	})
 	insertBillingAnalysisLog(t, Log{
@@ -472,7 +492,7 @@ func TestGetBillingAnalysisBuildsMultiplierOverview(t *testing.T) {
 			"subscription_consumed": 900,
 			"billing_mode":          "tiered_expr",
 			"matched_tier":          "long_context",
-			"group_ratio":           1.0,
+			"group_ratio":           0.25,
 		}),
 	})
 
@@ -480,19 +500,20 @@ func TestGetBillingAnalysisBuildsMultiplierOverview(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, result.Summary.WalletMultiplierOverview, 2)
-	assert.Equal(t, "2x", result.Summary.WalletMultiplierOverview[0].Label)
-	assert.EqualValues(t, 1000, result.Summary.WalletMultiplierOverview[0].Quota)
-	assert.InDelta(t, 500, result.Summary.WalletMultiplierOverview[0].OriginalQuota, 0.0001)
-	assert.EqualValues(t, 1, result.Summary.WalletMultiplierOverview[0].RequestCount)
-	assert.Equal(t, "0.2x", result.Summary.WalletMultiplierOverview[1].Label)
-	assert.EqualValues(t, 150, result.Summary.WalletMultiplierOverview[1].Quota)
-	assert.InDelta(t, 750, result.Summary.WalletMultiplierOverview[1].OriginalQuota, 0.0001)
+	assert.Equal(t, "分组倍率 0.5x", result.Summary.WalletMultiplierOverview[0].Label)
+	assert.EqualValues(t, 1150, result.Summary.WalletMultiplierOverview[0].Quota)
+	assert.InDelta(t, 2300, result.Summary.WalletMultiplierOverview[0].OriginalQuota, 0.0001)
+	assert.EqualValues(t, 2, result.Summary.WalletMultiplierOverview[0].RequestCount)
+	assert.Equal(t, "分组倍率 0.25x", result.Summary.WalletMultiplierOverview[1].Label)
+	assert.EqualValues(t, 400, result.Summary.WalletMultiplierOverview[1].Quota)
+	assert.InDelta(t, 1600, result.Summary.WalletMultiplierOverview[1].OriginalQuota, 0.0001)
+	assert.EqualValues(t, 1, result.Summary.WalletMultiplierOverview[1].RequestCount)
 
 	require.Len(t, result.Summary.SubscriptionMultiplierOverview, 2)
-	assert.Equal(t, "3x", result.Summary.SubscriptionMultiplierOverview[0].Label)
+	assert.Equal(t, "分组倍率 0.5x", result.Summary.SubscriptionMultiplierOverview[0].Label)
 	assert.EqualValues(t, 1500, result.Summary.SubscriptionMultiplierOverview[0].Quota)
-	assert.InDelta(t, 500, result.Summary.SubscriptionMultiplierOverview[0].OriginalQuota, 0.0001)
-	assert.Equal(t, "阶梯计费 / long_context / 1x", result.Summary.SubscriptionMultiplierOverview[1].Label)
+	assert.InDelta(t, 3000, result.Summary.SubscriptionMultiplierOverview[0].OriginalQuota, 0.0001)
+	assert.Equal(t, "阶梯计费 / long_context / 分组倍率 0.25x", result.Summary.SubscriptionMultiplierOverview[1].Label)
 	assert.EqualValues(t, 900, result.Summary.SubscriptionMultiplierOverview[1].Quota)
-	assert.InDelta(t, 900, result.Summary.SubscriptionMultiplierOverview[1].OriginalQuota, 0.0001)
+	assert.InDelta(t, 3600, result.Summary.SubscriptionMultiplierOverview[1].OriginalQuota, 0.0001)
 }
