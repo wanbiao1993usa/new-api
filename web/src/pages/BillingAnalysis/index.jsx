@@ -58,7 +58,9 @@ const { Text, Title } = Typography;
 const emptySummary = {
   total_quota: 0,
   wallet_quota: 0,
+  wallet_multiplier_overview: [],
   subscription_quota: 0,
+  subscription_multiplier_overview: [],
   token_count: 0,
   request_count: 0,
   effective_quota_per_1k_tokens: 0,
@@ -101,6 +103,16 @@ const normalizeAnalysis = (data) => ({
   summary: {
     ...emptySummary,
     ...(data?.summary || {}),
+    wallet_multiplier_overview: Array.isArray(
+      data?.summary?.wallet_multiplier_overview,
+    )
+      ? data.summary.wallet_multiplier_overview
+      : [],
+    subscription_multiplier_overview: Array.isArray(
+      data?.summary?.subscription_multiplier_overview,
+    )
+      ? data.summary.subscription_multiplier_overview
+      : [],
   },
   users: Array.isArray(data?.users) ? data.users : [],
   tokens: Array.isArray(data?.tokens) ? data.tokens : [],
@@ -109,7 +121,14 @@ const normalizeAnalysis = (data) => ({
   groups: Array.isArray(data?.groups) ? data.groups : [],
 });
 
-const StatCard = ({ icon: Icon, label, value, accentClassName }) => (
+const StatCard = ({
+  icon: Icon,
+  label,
+  value,
+  accentClassName,
+  detailsTitle,
+  details,
+}) => (
   <Card className='!rounded-lg shadow-sm' bodyStyle={{ padding: 16 }}>
     <div className='flex items-center justify-between gap-3 min-w-0'>
       <div className='min-w-0'>
@@ -126,6 +145,29 @@ const StatCard = ({ icon: Icon, label, value, accentClassName }) => (
         <Icon size={18} strokeWidth={2} />
       </div>
     </div>
+    {Array.isArray(details) && details.length > 0 && (
+      <div className='mt-3 border-t border-slate-100 pt-2 space-y-1'>
+        {detailsTitle && (
+          <Text type='tertiary' size='small'>
+            {detailsTitle}
+          </Text>
+        )}
+        {details.map((detail) => (
+          <div
+            key={`${label}-${detail.label}`}
+            className='flex items-center justify-between gap-2 text-xs text-slate-500'
+          >
+            <span className='truncate'>{detail.label}</span>
+            <div className='flex flex-col items-end flex-shrink-0 leading-tight'>
+              <span>{detail.value}</span>
+              {detail.extra && (
+                <span className='text-[11px] text-slate-400'>{detail.extra}</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
   </Card>
 );
 
@@ -220,6 +262,15 @@ const BillingAnalysis = () => {
   };
 
   const summary = analysis.summary;
+  const buildOverviewDetails = (items) =>
+    (Array.isArray(items) ? items : []).slice(0, 3).map((item) => ({
+      label: item?.label || '-',
+      value: renderQuota(item?.quota || 0),
+      extra:
+        Number.isFinite(item?.original_quota) && item.original_quota > 0
+          ? `${t('原价')} ${renderQuota(item.original_quota)}`
+          : '',
+    }));
   const statCards = [
     {
       key: 'total',
@@ -234,6 +285,8 @@ const BillingAnalysis = () => {
       value: renderQuota(summary.wallet_quota),
       icon: Wallet,
       accentClassName: 'bg-emerald-100 text-emerald-700',
+      detailsTitle: t('倍率'),
+      details: buildOverviewDetails(summary.wallet_multiplier_overview),
     },
     {
       key: 'subscription',
@@ -241,6 +294,8 @@ const BillingAnalysis = () => {
       value: renderQuota(summary.subscription_quota),
       icon: CalendarClock,
       accentClassName: 'bg-sky-100 text-sky-700',
+      detailsTitle: t('倍率'),
+      details: buildOverviewDetails(summary.subscription_multiplier_overview),
     },
     {
       key: 'tokens',
@@ -258,7 +313,7 @@ const BillingAnalysis = () => {
     },
     {
       key: 'effective',
-      label: t('每 1K Tokens 有效额度'),
+      label: t('每 1M Tokens 有效额度'),
       value: renderQuota(summary.effective_quota_per_1k_tokens || 0, 4),
       icon: Gauge,
       accentClassName: 'bg-indigo-100 text-indigo-700',
@@ -321,7 +376,7 @@ const BillingAnalysis = () => {
         render: (value) => renderQuota(value || 0),
       },
       {
-        title: t('每 1K Tokens 有效额度'),
+        title: t('每 1M Tokens 有效额度'),
         dataIndex: 'effective_quota_per_1k_tokens',
         key: 'effective_quota_per_1k_tokens',
         align: 'right',

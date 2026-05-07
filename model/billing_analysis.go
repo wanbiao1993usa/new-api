@@ -2,6 +2,8 @@ package model
 
 import (
 	"errors"
+	"fmt"
+	"math"
 	"sort"
 	"strconv"
 
@@ -20,12 +22,22 @@ type BillingAnalysisFilters struct {
 }
 
 type BillingAnalysisSummary struct {
-	TotalQuota                int64   `json:"total_quota"`
-	WalletQuota               int64   `json:"wallet_quota"`
-	SubscriptionQuota         int64   `json:"subscription_quota"`
-	TokenCount                int64   `json:"token_count"`
-	RequestCount              int64   `json:"request_count"`
-	EffectiveQuotaPer1KTokens float64 `json:"effective_quota_per_1k_tokens"`
+	TotalQuota                     int64                         `json:"total_quota"`
+	WalletQuota                    int64                         `json:"wallet_quota"`
+	WalletMultiplierOverview       []BillingAnalysisOverviewItem `json:"wallet_multiplier_overview"`
+	SubscriptionQuota              int64                         `json:"subscription_quota"`
+	SubscriptionMultiplierOverview []BillingAnalysisOverviewItem `json:"subscription_multiplier_overview"`
+	TokenCount                     int64                         `json:"token_count"`
+	RequestCount                   int64                         `json:"request_count"`
+	EffectiveQuotaPer1KTokens      float64                       `json:"effective_quota_per_1k_tokens"`
+}
+
+type BillingAnalysisOverviewItem struct {
+	Key           string  `json:"key"`
+	Label         string  `json:"label"`
+	Quota         int64   `json:"quota"`
+	OriginalQuota float64 `json:"original_quota"`
+	RequestCount  int64   `json:"request_count"`
 }
 
 type BillingAnalysisRow struct {
@@ -52,8 +64,20 @@ type BillingAnalysisResult struct {
 }
 
 type billingAnalysisLogOther struct {
-	BillingSource        string `json:"billing_source"`
-	SubscriptionConsumed int64  `json:"subscription_consumed"`
+	BillingSource        string   `json:"billing_source"`
+	SubscriptionConsumed int64    `json:"subscription_consumed"`
+	BillingMode          string   `json:"billing_mode"`
+	MatchedTier          string   `json:"matched_tier"`
+	ModelRatio           *float64 `json:"model_ratio"`
+	GroupRatio           *float64 `json:"group_ratio"`
+	UserGroupRatio       *float64 `json:"user_group_ratio"`
+	ModelPrice           *float64 `json:"model_price"`
+}
+
+type billingAnalysisOverviewMeta struct {
+	Key            string
+	Label          string
+	EffectiveRatio float64
 }
 
 func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions bool) (BillingAnalysisResult, error) {
@@ -103,6 +127,8 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 	modelRows := make(map[string]*BillingAnalysisRow)
 	channelRows := make(map[string]*BillingAnalysisRow)
 	groupRows := make(map[string]*BillingAnalysisRow)
+	walletOverviewRows := make(map[string]*BillingAnalysisOverviewItem)
+	subscriptionOverviewRows := make(map[string]*BillingAnalysisOverviewItem)
 
 	for rows.Next() {
 		var log Log
@@ -110,7 +136,8 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 			common.SysError("failed to scan billing analysis log: " + err.Error())
 			return result, errors.New("查询计费分析数据失败")
 		}
-		walletQuota, subscriptionQuota := splitBillingAnalysisQuota(log)
+		other := parseBillingAnalysisLogOther(log)
+		walletQuota, subscriptionQuota := splitBillingAnalysisQuotaWithOther(log, other)
 		tokenCount := int64(log.PromptTokens + log.CompletionTokens)
 		totalQuota := walletQuota + subscriptionQuota
 
@@ -118,6 +145,8 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 		addBillingAnalysisRow(tokenRows, log.TokenName, log.TokenName, 0, 0, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
 		addBillingAnalysisRow(modelRows, log.ModelName, log.ModelName, 0, 0, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
 		addBillingAnalysisRow(groupRows, log.Group, log.Group, 0, 0, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
+		addBillingAnalysisOverviewItem(walletOverviewRows, other, walletQuota)
+		addBillingAnalysisOverviewItem(subscriptionOverviewRows, other, subscriptionQuota)
 
 		if includeAdminDimensions {
 			userKey := strconv.Itoa(log.UserId)
@@ -137,6 +166,8 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 	}
 
 	fillBillingAnalysisEffectiveQuota(&result.Summary)
+	result.Summary.WalletMultiplierOverview = finishBillingAnalysisOverviewItems(walletOverviewRows)
+	result.Summary.SubscriptionMultiplierOverview = finishBillingAnalysisOverviewItems(subscriptionOverviewRows)
 	if includeAdminDimensions {
 		result.Users = finishBillingAnalysisRows(userRows)
 		result.Channels = finishBillingAnalysisRows(channelRows)
@@ -149,10 +180,19 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 }
 
 func splitBillingAnalysisQuota(log Log) (walletQuota int64, subscriptionQuota int64) {
+	other := parseBillingAnalysisLogOther(log)
+	return splitBillingAnalysisQuotaWithOther(log, other)
+}
+
+func parseBillingAnalysisLogOther(log Log) billingAnalysisLogOther {
 	var other billingAnalysisLogOther
 	if log.Other != "" {
 		_ = common.UnmarshalJsonStr(log.Other, &other)
 	}
+	return other
+}
+
+func splitBillingAnalysisQuotaWithOther(log Log, other billingAnalysisLogOther) (walletQuota int64, subscriptionQuota int64) {
 	if other.BillingSource == "subscription" {
 		subscriptionQuota = other.SubscriptionConsumed
 		if subscriptionQuota <= 0 {
@@ -161,6 +201,26 @@ func splitBillingAnalysisQuota(log Log) (walletQuota int64, subscriptionQuota in
 		return 0, subscriptionQuota
 	}
 	return int64(log.Quota), 0
+}
+
+func addBillingAnalysisOverviewItem(items map[string]*BillingAnalysisOverviewItem, other billingAnalysisLogOther, quota int64) {
+	if quota <= 0 {
+		return
+	}
+	meta := getBillingAnalysisOverviewMeta(other)
+	item, ok := items[meta.Key]
+	if !ok {
+		item = &BillingAnalysisOverviewItem{
+			Key:   meta.Key,
+			Label: meta.Label,
+		}
+		items[meta.Key] = item
+	}
+	item.Quota += quota
+	if meta.EffectiveRatio > 0 {
+		item.OriginalQuota += float64(quota) / meta.EffectiveRatio
+	}
+	item.RequestCount += 1
 }
 
 func addBillingAnalysisSummary(summary *BillingAnalysisSummary, totalQuota int64, walletQuota int64, subscriptionQuota int64, tokenCount int64) {
@@ -216,15 +276,98 @@ func finishBillingAnalysisRows(rowMap map[string]*BillingAnalysisRow) []BillingA
 	return rows
 }
 
+func finishBillingAnalysisOverviewItems(itemMap map[string]*BillingAnalysisOverviewItem) []BillingAnalysisOverviewItem {
+	items := make([]BillingAnalysisOverviewItem, 0, len(itemMap))
+	for _, item := range itemMap {
+		items = append(items, *item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Quota != items[j].Quota {
+			return items[i].Quota > items[j].Quota
+		}
+		if items[i].RequestCount != items[j].RequestCount {
+			return items[i].RequestCount > items[j].RequestCount
+		}
+		return items[i].Label < items[j].Label
+	})
+	return items
+}
+
+func getBillingAnalysisOverviewMeta(other billingAnalysisLogOther) billingAnalysisOverviewMeta {
+	groupRatio := billingAnalysisEffectiveGroupRatio(other)
+	groupRatioKey := formatBillingAnalysisRatioKey(groupRatio)
+	groupRatioLabel := formatBillingAnalysisRatioLabel(groupRatio)
+
+	if other.BillingMode == "tiered_expr" {
+		key := "tiered:" + groupRatioKey
+		label := "阶梯计费"
+		if other.MatchedTier != "" {
+			key += ":" + other.MatchedTier
+			label += " / " + other.MatchedTier
+		}
+		return billingAnalysisOverviewMeta{
+			Key:            key,
+			Label:          label + " / " + groupRatioLabel,
+			EffectiveRatio: groupRatio,
+		}
+	}
+
+	if other.ModelRatio != nil {
+		effectiveRatio := roundBillingAnalysisRatio(*other.ModelRatio * groupRatio)
+		return billingAnalysisOverviewMeta{
+			Key:            "ratio:" + formatBillingAnalysisRatioKey(effectiveRatio),
+			Label:          formatBillingAnalysisRatioLabel(effectiveRatio),
+			EffectiveRatio: effectiveRatio,
+		}
+	}
+
+	if other.ModelPrice != nil {
+		return billingAnalysisOverviewMeta{
+			Key:            "fixed:" + groupRatioKey,
+			Label:          "固定价格 / " + groupRatioLabel,
+			EffectiveRatio: groupRatio,
+		}
+	}
+
+	return billingAnalysisOverviewMeta{
+		Key:            "other:" + groupRatioKey,
+		Label:          "其他 / " + groupRatioLabel,
+		EffectiveRatio: groupRatio,
+	}
+}
+
+func billingAnalysisEffectiveGroupRatio(other billingAnalysisLogOther) float64 {
+	if other.UserGroupRatio != nil && *other.UserGroupRatio != -1 {
+		return roundBillingAnalysisRatio(*other.UserGroupRatio)
+	}
+	if other.GroupRatio != nil {
+		return roundBillingAnalysisRatio(*other.GroupRatio)
+	}
+	return 1
+}
+
+func roundBillingAnalysisRatio(value float64) float64 {
+	return math.Round(value*1e6) / 1e6
+}
+
+func formatBillingAnalysisRatioKey(value float64) string {
+	return fmt.Sprintf("%.6f", roundBillingAnalysisRatio(value))
+}
+
+func formatBillingAnalysisRatioLabel(value float64) string {
+	return strconv.FormatFloat(roundBillingAnalysisRatio(value), 'f', -1, 64) + "x"
+}
+
 func fillBillingAnalysisEffectiveQuota(target interface{}) {
+	const quotaPerMillionTokens = 1000000
 	switch v := target.(type) {
 	case *BillingAnalysisSummary:
 		if v.TokenCount > 0 {
-			v.EffectiveQuotaPer1KTokens = float64(v.TotalQuota) * 1000 / float64(v.TokenCount)
+			v.EffectiveQuotaPer1KTokens = float64(v.TotalQuota) * quotaPerMillionTokens / float64(v.TokenCount)
 		}
 	case *BillingAnalysisRow:
 		if v.TokenCount > 0 {
-			v.EffectiveQuotaPer1KTokens = float64(v.TotalQuota) * 1000 / float64(v.TokenCount)
+			v.EffectiveQuotaPer1KTokens = float64(v.TotalQuota) * quotaPerMillionTokens / float64(v.TokenCount)
 		}
 	}
 }

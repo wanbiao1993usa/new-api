@@ -211,7 +211,7 @@ func TestGetBillingAnalysisSplitsWalletAndSubscription(t *testing.T) {
 	assert.EqualValues(t, 3000, result.Summary.TotalQuota)
 	assert.EqualValues(t, 1000, result.Summary.WalletQuota)
 	assert.EqualValues(t, 2000, result.Summary.SubscriptionQuota)
-	assert.InDelta(t, 4545.45, result.Summary.EffectiveQuotaPer1KTokens, 0.01)
+	assert.InDelta(t, 4545454.55, result.Summary.EffectiveQuotaPer1KTokens, 0.01)
 
 	require.Len(t, result.Tokens, 2)
 	prodToken := result.Tokens[0]
@@ -300,7 +300,7 @@ func TestGetBillingAnalysisSeededLedgerAggregatesEveryDimension(t *testing.T) {
 	assert.EqualValues(t, 3400, result.Summary.TotalQuota)
 	assert.EqualValues(t, 1300, result.Summary.WalletQuota)
 	assert.EqualValues(t, 2100, result.Summary.SubscriptionQuota)
-	assert.InDelta(t, 4000, result.Summary.EffectiveQuotaPer1KTokens, 0.01)
+	assert.InDelta(t, 4000000, result.Summary.EffectiveQuotaPer1KTokens, 0.01)
 
 	require.Len(t, result.Users, 2)
 	alice, ok := billingAnalysisRowByKey(result.Users, "301")
@@ -333,7 +333,7 @@ func TestGetBillingAnalysisSeededLedgerAggregatesEveryDimension(t *testing.T) {
 	assert.EqualValues(t, 2200, tokenA.TotalQuota)
 	assert.EqualValues(t, 1000, tokenA.WalletQuota)
 	assert.EqualValues(t, 1200, tokenA.SubscriptionQuota)
-	assert.InDelta(t, 3142.86, tokenA.EffectiveQuotaPer1KTokens, 0.01)
+	assert.InDelta(t, 3142857.14, tokenA.EffectiveQuotaPer1KTokens, 0.01)
 
 	modelGPT4o, ok := billingAnalysisRowByKey(result.Models, "gpt-4o")
 	require.True(t, ok)
@@ -388,4 +388,111 @@ func TestGetBillingAnalysisSeededLedgerFiltersBeforeAggregating(t *testing.T) {
 	assert.Equal(t, "default", result.Groups[0].Name)
 	require.Len(t, result.Channels, 1)
 	assert.Equal(t, "11", result.Channels[0].Key)
+}
+
+func TestGetBillingAnalysisBuildsMultiplierOverview(t *testing.T) {
+	truncateTables(t)
+
+	insertBillingAnalysisLog(t, Log{
+		Id:               31,
+		UserId:           401,
+		Username:         "alice",
+		TokenName:        "token-a",
+		ModelName:        "gpt-4o",
+		ChannelId:        21,
+		Group:            "default",
+		CreatedAt:        2000,
+		Type:             LogTypeConsume,
+		Quota:            1000,
+		PromptTokens:     100,
+		CompletionTokens: 100,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":   "wallet",
+			"model_ratio":      2.0,
+			"group_ratio":      1.0,
+			"user_group_ratio": -1.0,
+		}),
+	})
+	insertBillingAnalysisLog(t, Log{
+		Id:               32,
+		UserId:           401,
+		Username:         "alice",
+		TokenName:        "token-b",
+		ModelName:        "gpt-4o-mini",
+		ChannelId:        21,
+		Group:            "default",
+		CreatedAt:        2010,
+		Type:             LogTypeConsume,
+		Quota:            150,
+		PromptTokens:     50,
+		CompletionTokens: 50,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":   "wallet",
+			"model_ratio":      0.2,
+			"group_ratio":      1.0,
+			"user_group_ratio": -1.0,
+		}),
+	})
+	insertBillingAnalysisLog(t, Log{
+		Id:               33,
+		UserId:           402,
+		Username:         "bob",
+		TokenName:        "token-c",
+		ModelName:        "claude-sonnet",
+		ChannelId:        22,
+		Group:            "vip",
+		CreatedAt:        2020,
+		Type:             LogTypeConsume,
+		Quota:            2000,
+		PromptTokens:     120,
+		CompletionTokens: 80,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":        "subscription",
+			"subscription_consumed": 1500,
+			"model_ratio":           2.0,
+			"group_ratio":           1.0,
+			"user_group_ratio":      1.5,
+		}),
+	})
+	insertBillingAnalysisLog(t, Log{
+		Id:               34,
+		UserId:           402,
+		Username:         "bob",
+		TokenName:        "token-d",
+		ModelName:        "claude-opus",
+		ChannelId:        22,
+		Group:            "vip",
+		CreatedAt:        2030,
+		Type:             LogTypeConsume,
+		Quota:            900,
+		PromptTokens:     60,
+		CompletionTokens: 40,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":        "subscription",
+			"subscription_consumed": 900,
+			"billing_mode":          "tiered_expr",
+			"matched_tier":          "long_context",
+			"group_ratio":           1.0,
+		}),
+	})
+
+	result, err := GetBillingAnalysis(BillingAnalysisFilters{}, true)
+	require.NoError(t, err)
+
+	require.Len(t, result.Summary.WalletMultiplierOverview, 2)
+	assert.Equal(t, "2x", result.Summary.WalletMultiplierOverview[0].Label)
+	assert.EqualValues(t, 1000, result.Summary.WalletMultiplierOverview[0].Quota)
+	assert.InDelta(t, 500, result.Summary.WalletMultiplierOverview[0].OriginalQuota, 0.0001)
+	assert.EqualValues(t, 1, result.Summary.WalletMultiplierOverview[0].RequestCount)
+	assert.Equal(t, "0.2x", result.Summary.WalletMultiplierOverview[1].Label)
+	assert.EqualValues(t, 150, result.Summary.WalletMultiplierOverview[1].Quota)
+	assert.InDelta(t, 750, result.Summary.WalletMultiplierOverview[1].OriginalQuota, 0.0001)
+
+	require.Len(t, result.Summary.SubscriptionMultiplierOverview, 2)
+	assert.Equal(t, "3x", result.Summary.SubscriptionMultiplierOverview[0].Label)
+	assert.EqualValues(t, 1500, result.Summary.SubscriptionMultiplierOverview[0].Quota)
+	assert.InDelta(t, 500, result.Summary.SubscriptionMultiplierOverview[0].OriginalQuota, 0.0001)
+	assert.Equal(t, "阶梯计费 / long_context / 1x", result.Summary.SubscriptionMultiplierOverview[1].Label)
+	assert.EqualValues(t, 900, result.Summary.SubscriptionMultiplierOverview[1].Quota)
+	assert.InDelta(t, 900, result.Summary.SubscriptionMultiplierOverview[1].OriginalQuota, 0.0001)
 }
