@@ -23,6 +23,7 @@ type BillingAnalysisFilters struct {
 
 type BillingAnalysisSummary struct {
 	TotalQuota                     int64                         `json:"total_quota"`
+	OriginalTotalQuota             float64                       `json:"original_total_quota"`
 	WalletQuota                    int64                         `json:"wallet_quota"`
 	WalletMultiplierOverview       []BillingAnalysisOverviewItem `json:"wallet_multiplier_overview"`
 	SubscriptionQuota              int64                         `json:"subscription_quota"`
@@ -146,8 +147,12 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 		walletQuota, subscriptionQuota := splitBillingAnalysisQuotaWithOther(log, other)
 		tokenCount := int64(log.PromptTokens + log.CompletionTokens)
 		totalQuota := walletQuota + subscriptionQuota
+		originalTotalQuota := calculateBillingAnalysisOriginalQuota(
+			totalQuota,
+			getBillingAnalysisOverviewMeta(other).EffectiveRatio,
+		)
 
-		addBillingAnalysisSummary(&result.Summary, totalQuota, walletQuota, subscriptionQuota, tokenCount)
+		addBillingAnalysisSummary(&result.Summary, totalQuota, originalTotalQuota, walletQuota, subscriptionQuota, tokenCount)
 		addBillingAnalysisRow(tokenRows, log.TokenName, log.TokenName, 0, 0, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
 		addBillingAnalysisRow(modelRows, log.ModelName, log.ModelName, 0, 0, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
 		addBillingAnalysisRow(groupRows, log.Group, log.Group, 0, 0, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
@@ -223,14 +228,20 @@ func addBillingAnalysisOverviewItem(items map[string]*BillingAnalysisOverviewIte
 		items[meta.Key] = item
 	}
 	item.Quota += quota
-	if meta.EffectiveRatio > 0 {
-		item.OriginalQuota += float64(quota) / meta.EffectiveRatio
-	}
+	item.OriginalQuota += calculateBillingAnalysisOriginalQuota(quota, meta.EffectiveRatio)
 	item.RequestCount += 1
 }
 
-func addBillingAnalysisSummary(summary *BillingAnalysisSummary, totalQuota int64, walletQuota int64, subscriptionQuota int64, tokenCount int64) {
+func calculateBillingAnalysisOriginalQuota(quota int64, effectiveRatio float64) float64 {
+	if quota <= 0 || effectiveRatio <= 0 {
+		return 0
+	}
+	return float64(quota) / effectiveRatio
+}
+
+func addBillingAnalysisSummary(summary *BillingAnalysisSummary, totalQuota int64, originalTotalQuota float64, walletQuota int64, subscriptionQuota int64, tokenCount int64) {
 	summary.TotalQuota += totalQuota
+	summary.OriginalTotalQuota += originalTotalQuota
 	summary.WalletQuota += walletQuota
 	summary.SubscriptionQuota += subscriptionQuota
 	summary.TokenCount += tokenCount
@@ -316,7 +327,7 @@ func getBillingAnalysisOverviewMeta(other billingAnalysisLogOther) billingAnalys
 		}
 	}
 
-	if other.ModelPrice != nil {
+	if other.ModelPrice != nil && *other.ModelPrice != -1 {
 		return billingAnalysisOverviewMeta{
 			Key:            "fixed:" + groupMeta.Key,
 			Label:          "固定价格 / " + groupMeta.Label,

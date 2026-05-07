@@ -211,6 +211,7 @@ func TestGetBillingAnalysisSplitsWalletAndSubscription(t *testing.T) {
 	assert.EqualValues(t, 3000, result.Summary.TotalQuota)
 	assert.EqualValues(t, 1000, result.Summary.WalletQuota)
 	assert.EqualValues(t, 2000, result.Summary.SubscriptionQuota)
+	assert.InDelta(t, 3000, result.Summary.OriginalTotalQuota, 0.0001)
 	assert.InDelta(t, 4545454.55, result.Summary.EffectiveQuotaPer1KTokens, 0.01)
 
 	require.Len(t, result.Tokens, 2)
@@ -300,6 +301,7 @@ func TestGetBillingAnalysisSeededLedgerAggregatesEveryDimension(t *testing.T) {
 	assert.EqualValues(t, 3400, result.Summary.TotalQuota)
 	assert.EqualValues(t, 1300, result.Summary.WalletQuota)
 	assert.EqualValues(t, 2100, result.Summary.SubscriptionQuota)
+	assert.InDelta(t, 3400, result.Summary.OriginalTotalQuota, 0.0001)
 	assert.InDelta(t, 4000000, result.Summary.EffectiveQuotaPer1KTokens, 0.01)
 
 	require.Len(t, result.Users, 2)
@@ -498,6 +500,7 @@ func TestGetBillingAnalysisBuildsMultiplierOverview(t *testing.T) {
 
 	result, err := GetBillingAnalysis(BillingAnalysisFilters{}, true)
 	require.NoError(t, err)
+	assert.InDelta(t, 10500, result.Summary.OriginalTotalQuota, 0.0001)
 
 	require.Len(t, result.Summary.WalletMultiplierOverview, 2)
 	assert.Equal(t, "分组倍率 0.5x", result.Summary.WalletMultiplierOverview[0].Label)
@@ -516,4 +519,20 @@ func TestGetBillingAnalysisBuildsMultiplierOverview(t *testing.T) {
 	assert.Equal(t, "阶梯计费 / long_context / 分组倍率 0.25x", result.Summary.SubscriptionMultiplierOverview[1].Label)
 	assert.EqualValues(t, 900, result.Summary.SubscriptionMultiplierOverview[1].Quota)
 	assert.InDelta(t, 3600, result.Summary.SubscriptionMultiplierOverview[1].OriginalQuota, 0.0001)
+}
+
+func TestGetBillingAnalysisOverviewMetaIgnoresUnsetModelPrice(t *testing.T) {
+	modelRatio := 2.0
+	groupRatio := 0.5
+	unsetModelPrice := -1.0
+
+	meta := getBillingAnalysisOverviewMeta(billingAnalysisLogOther{
+		ModelRatio: &modelRatio,
+		GroupRatio: &groupRatio,
+		ModelPrice: &unsetModelPrice,
+	})
+
+	assert.Equal(t, "分组倍率 0.5x", meta.Label)
+	assert.Equal(t, "group:0.500000", meta.Key)
+	assert.InDelta(t, 0.5, meta.EffectiveRatio, 0.000001)
 }

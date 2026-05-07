@@ -57,6 +57,7 @@ const { Text, Title } = Typography;
 
 const emptySummary = {
   total_quota: 0,
+  original_total_quota: 0,
   wallet_quota: 0,
   wallet_multiplier_overview: [],
   subscription_quota: 0,
@@ -278,6 +279,12 @@ const BillingAnalysis = () => {
       value: renderQuota(summary.total_quota),
       icon: ReceiptText,
       accentClassName: 'bg-slate-100 text-slate-700',
+      details: [
+        {
+          label: t('官方原价总额'),
+          value: renderQuota(summary.original_total_quota || 0),
+        },
+      ],
     },
     {
       key: 'wallet',
