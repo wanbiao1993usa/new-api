@@ -28,17 +28,20 @@ type BillingAnalysisSummary struct {
 	WalletMultiplierOverview       []BillingAnalysisOverviewItem `json:"wallet_multiplier_overview"`
 	SubscriptionQuota              int64                         `json:"subscription_quota"`
 	SubscriptionMultiplierOverview []BillingAnalysisOverviewItem `json:"subscription_multiplier_overview"`
+	MultiplierOverview             []BillingAnalysisOverviewItem `json:"multiplier_overview"`
 	TokenCount                     int64                         `json:"token_count"`
 	RequestCount                   int64                         `json:"request_count"`
 	EffectiveQuotaPer1KTokens      float64                       `json:"effective_quota_per_1k_tokens"`
 }
 
 type BillingAnalysisOverviewItem struct {
-	Key           string  `json:"key"`
-	Label         string  `json:"label"`
-	Quota         int64   `json:"quota"`
-	OriginalQuota float64 `json:"original_quota"`
-	RequestCount  int64   `json:"request_count"`
+	Key                       string  `json:"key"`
+	Label                     string  `json:"label"`
+	Quota                     int64   `json:"quota"`
+	OriginalQuota             float64 `json:"original_quota"`
+	RequestCount              int64   `json:"request_count"`
+	TokenCount                int64   `json:"token_count"`
+	EffectiveQuotaPer1KTokens float64 `json:"effective_quota_per_1k_tokens"`
 }
 
 type BillingAnalysisRow struct {
@@ -136,6 +139,7 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 	groupRows := make(map[string]*BillingAnalysisRow)
 	walletOverviewRows := make(map[string]*BillingAnalysisOverviewItem)
 	subscriptionOverviewRows := make(map[string]*BillingAnalysisOverviewItem)
+	multiplierOverviewRows := make(map[string]*BillingAnalysisOverviewItem)
 
 	for rows.Next() {
 		var log Log
@@ -158,6 +162,7 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 		addBillingAnalysisRow(groupRows, log.Group, log.Group, 0, 0, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
 		addBillingAnalysisOverviewItem(walletOverviewRows, other, walletQuota)
 		addBillingAnalysisOverviewItem(subscriptionOverviewRows, other, subscriptionQuota)
+		addBillingAnalysisUsageOverviewItem(multiplierOverviewRows, other, totalQuota, tokenCount)
 
 		if includeAdminDimensions {
 			userKey := strconv.Itoa(log.UserId)
@@ -179,6 +184,7 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 	fillBillingAnalysisEffectiveQuota(&result.Summary)
 	result.Summary.WalletMultiplierOverview = finishBillingAnalysisOverviewItems(walletOverviewRows)
 	result.Summary.SubscriptionMultiplierOverview = finishBillingAnalysisOverviewItems(subscriptionOverviewRows)
+	result.Summary.MultiplierOverview = finishBillingAnalysisOverviewItems(multiplierOverviewRows)
 	if includeAdminDimensions {
 		result.Users = finishBillingAnalysisRows(userRows)
 		result.Channels = finishBillingAnalysisRows(channelRows)
@@ -229,6 +235,22 @@ func addBillingAnalysisOverviewItem(items map[string]*BillingAnalysisOverviewIte
 	}
 	item.Quota += quota
 	item.OriginalQuota += calculateBillingAnalysisOriginalQuota(quota, meta.EffectiveRatio)
+	item.RequestCount += 1
+}
+
+func addBillingAnalysisUsageOverviewItem(items map[string]*BillingAnalysisOverviewItem, other billingAnalysisLogOther, quota int64, tokenCount int64) {
+	meta := getBillingAnalysisOverviewMeta(other)
+	item, ok := items[meta.Key]
+	if !ok {
+		item = &BillingAnalysisOverviewItem{
+			Key:   meta.Key,
+			Label: meta.Label,
+		}
+		items[meta.Key] = item
+	}
+	item.Quota += quota
+	item.OriginalQuota += calculateBillingAnalysisOriginalQuota(quota, meta.EffectiveRatio)
+	item.TokenCount += tokenCount
 	item.RequestCount += 1
 }
 
@@ -296,6 +318,7 @@ func finishBillingAnalysisRows(rowMap map[string]*BillingAnalysisRow) []BillingA
 func finishBillingAnalysisOverviewItems(itemMap map[string]*BillingAnalysisOverviewItem) []BillingAnalysisOverviewItem {
 	items := make([]BillingAnalysisOverviewItem, 0, len(itemMap))
 	for _, item := range itemMap {
+		fillBillingAnalysisEffectiveQuota(item)
 		items = append(items, *item)
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -396,6 +419,10 @@ func fillBillingAnalysisEffectiveQuota(target interface{}) {
 	case *BillingAnalysisRow:
 		if v.TokenCount > 0 {
 			v.EffectiveQuotaPer1KTokens = float64(v.TotalQuota) * quotaPerMillionTokens / float64(v.TokenCount)
+		}
+	case *BillingAnalysisOverviewItem:
+		if v.TokenCount > 0 {
+			v.EffectiveQuotaPer1KTokens = float64(v.Quota) * quotaPerMillionTokens / float64(v.TokenCount)
 		}
 	}
 }

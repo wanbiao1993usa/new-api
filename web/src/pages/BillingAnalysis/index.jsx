@@ -62,6 +62,7 @@ const emptySummary = {
   wallet_multiplier_overview: [],
   subscription_quota: 0,
   subscription_multiplier_overview: [],
+  multiplier_overview: [],
   token_count: 0,
   request_count: 0,
   effective_quota_per_1k_tokens: 0,
@@ -74,6 +75,28 @@ const emptyAnalysis = {
   models: [],
   channels: [],
   groups: [],
+};
+
+const compactBillingOverviewLabel = (label) => {
+  if (!label || typeof label !== 'string') {
+    return '-';
+  }
+
+  const parts = label.split(' / ');
+  if (parts[0] !== '阶梯计费') {
+    return label;
+  }
+
+  const ratioPart = parts.find((part) => part.startsWith('分组倍率 '));
+  const ratio = ratioPart?.replace('分组倍率 ', '').trim();
+  const tier = parts.length > 2 ? parts[1]?.trim() : '';
+  if (tier && ratio) {
+    return `${tier} · ${ratio}`;
+  }
+  if (ratio) {
+    return `阶梯计费 · ${ratio}`;
+  }
+  return label;
 };
 
 const getInitialDateRange = () => [
@@ -113,6 +136,9 @@ const normalizeAnalysis = (data) => ({
       data?.summary?.subscription_multiplier_overview,
     )
       ? data.summary.subscription_multiplier_overview
+      : [],
+    multiplier_overview: Array.isArray(data?.summary?.multiplier_overview)
+      ? data.summary.multiplier_overview
       : [],
   },
   users: Array.isArray(data?.users) ? data.users : [],
@@ -158,11 +184,20 @@ const StatCard = ({
             key={`${label}-${detail.label}`}
             className='flex items-center justify-between gap-2 text-xs text-slate-500'
           >
-            <span className='truncate'>{detail.label}</span>
+            <Tooltip content={detail.fullLabel || detail.label}>
+              <span
+                className='min-w-0 flex-1 truncate'
+                title={detail.fullLabel || detail.label}
+              >
+                {detail.label}
+              </span>
+            </Tooltip>
             <div className='flex flex-col items-end flex-shrink-0 leading-tight'>
               <span>{detail.value}</span>
               {detail.extra && (
-                <span className='text-[11px] text-slate-400'>{detail.extra}</span>
+                <span className='text-[11px] text-slate-400'>
+                  {detail.extra}
+                </span>
               )}
             </div>
           </div>
@@ -265,13 +300,30 @@ const BillingAnalysis = () => {
   const summary = analysis.summary;
   const buildOverviewDetails = (items) =>
     (Array.isArray(items) ? items : []).slice(0, 3).map((item) => ({
-      label: item?.label || '-',
+      label: compactBillingOverviewLabel(item?.label || '-'),
+      fullLabel: item?.label || '-',
       value: renderQuota(item?.quota || 0),
       extra:
         Number.isFinite(item?.original_quota) && item.original_quota > 0
           ? `${t('原价')} ${renderQuota(item.original_quota)}`
           : '',
     }));
+  const buildMetricOverviewDetails = (
+    items,
+    valueGetter,
+    valueFormatter,
+    extraGetter,
+  ) =>
+    (Array.isArray(items) ? [...items] : [])
+      .sort((a, b) => (valueGetter(b) || 0) - (valueGetter(a) || 0))
+      .slice(0, 3)
+      .map((item) => ({
+        label: compactBillingOverviewLabel(item?.label || '-'),
+        fullLabel: item?.label || '-',
+        value: valueFormatter(valueGetter(item) || 0, item),
+        extra: extraGetter?.(item) || '',
+      }));
+  const multiplierOverview = summary.multiplier_overview || [];
   const statCards = [
     {
       key: 'total',
@@ -310,6 +362,14 @@ const BillingAnalysis = () => {
       value: renderNumber(summary.token_count || 0),
       icon: Hash,
       accentClassName: 'bg-amber-100 text-amber-700',
+      detailsTitle: t('分组倍率'),
+      details: buildMetricOverviewDetails(
+        multiplierOverview,
+        (item) => item?.token_count || 0,
+        (value) => renderNumber(value),
+        (item) =>
+          `${t('消费日志数')} ${renderNumber(item?.request_count || 0)}`,
+      ),
     },
     {
       key: 'requests',
@@ -317,6 +377,13 @@ const BillingAnalysis = () => {
       value: renderNumber(summary.request_count || 0),
       icon: ListChecks,
       accentClassName: 'bg-rose-100 text-rose-700',
+      detailsTitle: t('分组倍率'),
+      details: buildMetricOverviewDetails(
+        multiplierOverview,
+        (item) => item?.request_count || 0,
+        (value) => renderNumber(value),
+        (item) => `${t('日志 Tokens')} ${renderNumber(item?.token_count || 0)}`,
+      ),
     },
     {
       key: 'effective',
@@ -324,6 +391,13 @@ const BillingAnalysis = () => {
       value: renderQuota(summary.effective_quota_per_1k_tokens || 0, 4),
       icon: Gauge,
       accentClassName: 'bg-indigo-100 text-indigo-700',
+      detailsTitle: t('分组倍率'),
+      details: buildMetricOverviewDetails(
+        multiplierOverview,
+        (item) => item?.effective_quota_per_1k_tokens || 0,
+        (value) => renderQuota(value, 4),
+        (item) => `${t('日志 Tokens')} ${renderNumber(item?.token_count || 0)}`,
+      ),
     },
   ];
 

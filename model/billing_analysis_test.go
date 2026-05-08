@@ -521,6 +521,103 @@ func TestGetBillingAnalysisBuildsMultiplierOverview(t *testing.T) {
 	assert.InDelta(t, 3600, result.Summary.SubscriptionMultiplierOverview[1].OriginalQuota, 0.0001)
 }
 
+func TestGetBillingAnalysisBuildsUsageMultiplierOverview(t *testing.T) {
+	truncateTables(t)
+
+	insertBillingAnalysisLog(t, Log{
+		Id:               41,
+		UserId:           501,
+		Username:         "alice",
+		TokenName:        "token-a",
+		ModelName:        "gpt-4o",
+		ChannelId:        31,
+		Group:            "default",
+		CreatedAt:        3000,
+		Type:             LogTypeConsume,
+		Quota:            100,
+		PromptTokens:     40,
+		CompletionTokens: 60,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":   "wallet",
+			"model_ratio":      1.0,
+			"group_ratio":      0.5,
+			"user_group_ratio": -1.0,
+		}),
+	})
+	insertBillingAnalysisLog(t, Log{
+		Id:               42,
+		UserId:           501,
+		Username:         "alice",
+		TokenName:        "token-b",
+		ModelName:        "gpt-4o-mini",
+		ChannelId:        31,
+		Group:            "default",
+		CreatedAt:        3010,
+		Type:             LogTypeConsume,
+		Quota:            800,
+		PromptTokens:     120,
+		CompletionTokens: 180,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":        "subscription",
+			"subscription_consumed": 400,
+			"model_ratio":           1.0,
+			"group_ratio":           0.5,
+			"user_group_ratio":      -1.0,
+		}),
+	})
+	insertBillingAnalysisLog(t, Log{
+		Id:               43,
+		UserId:           502,
+		Username:         "bob",
+		TokenName:        "token-c",
+		ModelName:        "claude-sonnet",
+		ChannelId:        32,
+		Group:            "vip",
+		CreatedAt:        3020,
+		Type:             LogTypeConsume,
+		Quota:            200,
+		PromptTokens:     25,
+		CompletionTokens: 75,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":   "wallet",
+			"billing_mode":     "tiered_expr",
+			"matched_tier":     "long_context",
+			"group_ratio":      0.25,
+			"user_group_ratio": -1.0,
+		}),
+	})
+
+	result, err := GetBillingAnalysis(BillingAnalysisFilters{}, true)
+	require.NoError(t, err)
+
+	data, err := common.Marshal(result.Summary)
+	require.NoError(t, err)
+	var summary map[string]interface{}
+	require.NoError(t, common.Unmarshal(data, &summary))
+
+	rawOverview, ok := summary["multiplier_overview"].([]interface{})
+	require.True(t, ok, "summary should expose multiplier_overview")
+	require.Len(t, rawOverview, 2)
+
+	first, ok := rawOverview[0].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "分组倍率 0.5x", first["label"])
+	assert.EqualValues(t, 500, first["quota"])
+	assert.EqualValues(t, 400, first["token_count"])
+	assert.EqualValues(t, 2, first["request_count"])
+	assert.InDelta(t, 1000, first["original_quota"], 0.0001)
+	assert.InDelta(t, 1250000, first["effective_quota_per_1k_tokens"], 0.01)
+
+	second, ok := rawOverview[1].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "阶梯计费 / long_context / 分组倍率 0.25x", second["label"])
+	assert.EqualValues(t, 200, second["quota"])
+	assert.EqualValues(t, 100, second["token_count"])
+	assert.EqualValues(t, 1, second["request_count"])
+	assert.InDelta(t, 800, second["original_quota"], 0.0001)
+	assert.InDelta(t, 2000000, second["effective_quota_per_1k_tokens"], 0.01)
+}
+
 func TestGetBillingAnalysisOverviewMetaIgnoresUnsetModelPrice(t *testing.T) {
 	modelRatio := 2.0
 	groupRatio := 0.5
