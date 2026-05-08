@@ -564,6 +564,116 @@ func TestAddTokenRejectsHiddenButAccessibleGroup(t *testing.T) {
 	}
 }
 
+func TestAddTokenRejectsEmptyGroup(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	withTokenControllerGroupSettings(t, `{"default":"Default"}`, `{"default":"Default"}`)
+	if err := db.Create(&model.User{Id: 13, Username: "group-required-user", Group: "default", Status: common.UserStatusEnabled, AffCode: "tu13"}).Error; err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	body := map[string]any{
+		"name":                 "empty-group-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 13)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected empty group token creation to fail")
+	}
+	if !strings.Contains(response.Message, "请选择分组") {
+		t.Fatalf("unexpected error message: %s", response.Message)
+	}
+
+	var count int64
+	if err := db.Model(&model.Token{}).Where("user_id = ?", 13).Count(&count).Error; err != nil {
+		t.Fatalf("failed to count tokens: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected no token to be created, got %d", count)
+	}
+}
+
+func TestAddTokenAllowsSelectedGroup(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	withTokenControllerGroupSettings(t, `{"default":"Default"}`, `{"default":"Default"}`)
+	if err := db.Create(&model.User{Id: 14, Username: "selected-group-user", Group: "default", Status: common.UserStatusEnabled, AffCode: "tu14"}).Error; err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	body := map[string]any{
+		"name":                 "selected-group-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "default",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 14)
+	ctx.Set("group", "default")
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected selected group token creation to succeed, got message: %s", response.Message)
+	}
+
+	var token model.Token
+	if err := db.Where("user_id = ?", 14).First(&token).Error; err != nil {
+		t.Fatalf("failed to get created token: %v", err)
+	}
+	if token.Group != "default" {
+		t.Fatalf("expected created token group default, got %q", token.Group)
+	}
+}
+
+func TestUpdateTokenAllowsKeepingEmptyGroup(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 15, "empty-group-legacy-token", "empty1234token5678")
+	if err := db.Model(token).Update("group", "").Error; err != nil {
+		t.Fatalf("failed to make token group empty: %v", err)
+	}
+
+	body := map[string]any{
+		"id":                   token.Id,
+		"name":                 "empty-group-legacy-token-updated",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 15)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected keeping empty group to succeed, got message: %s", response.Message)
+	}
+
+	var updated model.Token
+	if err := db.First(&updated, token.Id).Error; err != nil {
+		t.Fatalf("failed to get updated token: %v", err)
+	}
+	if updated.Group != "" {
+		t.Fatalf("expected token group to remain empty, got %q", updated.Group)
+	}
+}
+
 func TestUpdateTokenAllowsKeepingHiddenAccessibleGroup(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	withTokenControllerGroupSettings(t, `{"default":"Default","vip":"VIP"}`, `{"vip":"VIP"}`)

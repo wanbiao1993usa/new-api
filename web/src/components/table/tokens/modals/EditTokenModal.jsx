@@ -527,8 +527,17 @@ const EditTokenModal = (props) => {
                       <Form.Select
                         field='group'
                         label={t('令牌分组')}
-                        placeholder={t('令牌分组，默认为用户的分组')}
+                        placeholder={
+                          isEdit
+                            ? t('令牌分组，默认为用户的分组')
+                            : t('请选择分组')
+                        }
                         extraText={t('分组会影响模型价格、可用模型和扣费方式')}
+                        rules={
+                          isEdit
+                            ? []
+                            : [{ required: true, message: t('请选择分组') }]
+                        }
                         optionList={groups}
                         renderOptionItem={renderGroupOption}
                         filter={(input, option) => {

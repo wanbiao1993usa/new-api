@@ -240,6 +240,10 @@ func AddToken(c *gin.Context) {
 			return
 		}
 	}
+	if strings.TrimSpace(token.Group) == "" {
+		common.ApiErrorMsg(c, "请选择分组")
+		return
+	}
 	if err := validateTokenGroupVisible(c, c.GetInt("id"), token.Group); err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
