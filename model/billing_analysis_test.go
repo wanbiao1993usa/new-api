@@ -513,7 +513,7 @@ func TestGetBillingAnalysisBuildsMultiplierOverview(t *testing.T) {
 	assert.EqualValues(t, 1, result.Summary.WalletMultiplierOverview[1].RequestCount)
 
 	require.Len(t, result.Summary.SubscriptionMultiplierOverview, 2)
-	assert.Equal(t, "分组倍率 0.5x", result.Summary.SubscriptionMultiplierOverview[0].Label)
+	assert.Equal(t, "专属倍率 0.5x", result.Summary.SubscriptionMultiplierOverview[0].Label)
 	assert.EqualValues(t, 1500, result.Summary.SubscriptionMultiplierOverview[0].Quota)
 	assert.InDelta(t, 3000, result.Summary.SubscriptionMultiplierOverview[0].OriginalQuota, 0.0001)
 	assert.Equal(t, "阶梯计费 / long_context / 分组倍率 0.25x", result.Summary.SubscriptionMultiplierOverview[1].Label)
@@ -561,8 +561,8 @@ func TestGetBillingAnalysisBuildsUsageMultiplierOverview(t *testing.T) {
 			"billing_source":        "subscription",
 			"subscription_consumed": 400,
 			"model_ratio":           1.0,
-			"group_ratio":           0.5,
-			"user_group_ratio":      -1.0,
+			"group_ratio":           1.0,
+			"user_group_ratio":      0.5,
 		}),
 	})
 	insertBillingAnalysisLog(t, Log{
@@ -597,16 +597,16 @@ func TestGetBillingAnalysisBuildsUsageMultiplierOverview(t *testing.T) {
 
 	rawOverview, ok := summary["multiplier_overview"].([]interface{})
 	require.True(t, ok, "summary should expose multiplier_overview")
-	require.Len(t, rawOverview, 2)
+	require.Len(t, rawOverview, 3)
 
 	first, ok := rawOverview[0].(map[string]interface{})
 	require.True(t, ok)
-	assert.Equal(t, "分组倍率 0.5x", first["label"])
-	assert.EqualValues(t, 500, first["quota"])
-	assert.EqualValues(t, 400, first["token_count"])
-	assert.EqualValues(t, 2, first["request_count"])
-	assert.InDelta(t, 1000, first["original_quota"], 0.0001)
-	assert.InDelta(t, 1250000, first["effective_quota_per_1k_tokens"], 0.01)
+	assert.Equal(t, "专属倍率 0.5x", first["label"])
+	assert.EqualValues(t, 400, first["quota"])
+	assert.EqualValues(t, 300, first["token_count"])
+	assert.EqualValues(t, 1, first["request_count"])
+	assert.InDelta(t, 800, first["original_quota"], 0.0001)
+	assert.InDelta(t, 1333333.33, first["effective_quota_per_1k_tokens"], 0.01)
 
 	second, ok := rawOverview[1].(map[string]interface{})
 	require.True(t, ok)
@@ -616,6 +616,15 @@ func TestGetBillingAnalysisBuildsUsageMultiplierOverview(t *testing.T) {
 	assert.EqualValues(t, 1, second["request_count"])
 	assert.InDelta(t, 800, second["original_quota"], 0.0001)
 	assert.InDelta(t, 2000000, second["effective_quota_per_1k_tokens"], 0.01)
+
+	third, ok := rawOverview[2].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "分组倍率 0.5x", third["label"])
+	assert.EqualValues(t, 100, third["quota"])
+	assert.EqualValues(t, 100, third["token_count"])
+	assert.EqualValues(t, 1, third["request_count"])
+	assert.InDelta(t, 200, third["original_quota"], 0.0001)
+	assert.InDelta(t, 1000000, third["effective_quota_per_1k_tokens"], 0.01)
 }
 
 func TestGetBillingAnalysisOverviewMetaIgnoresUnsetModelPrice(t *testing.T) {

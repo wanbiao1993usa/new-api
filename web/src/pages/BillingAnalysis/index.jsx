@@ -87,14 +87,21 @@ const compactBillingOverviewLabel = (label) => {
     return label;
   }
 
-  const ratioPart = parts.find((part) => part.startsWith('分组倍率 '));
-  const ratio = ratioPart?.replace('分组倍率 ', '').trim();
+  const ratioPart = parts.find(
+    (part) => part.startsWith('分组倍率 ') || part.startsWith('专属倍率 '),
+  );
+  const isUserRatio = ratioPart?.startsWith('专属倍率 ');
+  const ratio = ratioPart
+    ?.replace('分组倍率 ', '')
+    .replace('专属倍率 ', '')
+    .trim();
+  const compactRatio = isUserRatio ? `专属 ${ratio}` : ratio;
   const tier = parts.length > 2 ? parts[1]?.trim() : '';
-  if (tier && ratio) {
-    return `${tier} · ${ratio}`;
+  if (tier && compactRatio) {
+    return `${tier} · ${compactRatio}`;
   }
-  if (ratio) {
-    return `阶梯计费 · ${ratio}`;
+  if (compactRatio) {
+    return `阶梯计费 · ${compactRatio}`;
   }
   return label;
 };
@@ -344,7 +351,7 @@ const BillingAnalysis = () => {
       value: renderQuota(summary.wallet_quota),
       icon: Wallet,
       accentClassName: 'bg-emerald-100 text-emerald-700',
-      detailsTitle: t('分组倍率'),
+      detailsTitle: t('倍率'),
       details: buildOverviewDetails(summary.wallet_multiplier_overview),
     },
     {
@@ -353,7 +360,7 @@ const BillingAnalysis = () => {
       value: renderQuota(summary.subscription_quota),
       icon: CalendarClock,
       accentClassName: 'bg-sky-100 text-sky-700',
-      detailsTitle: t('分组倍率'),
+      detailsTitle: t('倍率'),
       details: buildOverviewDetails(summary.subscription_multiplier_overview),
     },
     {
@@ -362,7 +369,7 @@ const BillingAnalysis = () => {
       value: renderNumber(summary.token_count || 0),
       icon: Hash,
       accentClassName: 'bg-amber-100 text-amber-700',
-      detailsTitle: t('分组倍率'),
+      detailsTitle: t('倍率'),
       details: buildMetricOverviewDetails(
         multiplierOverview,
         (item) => item?.token_count || 0,
@@ -377,7 +384,7 @@ const BillingAnalysis = () => {
       value: renderNumber(summary.request_count || 0),
       icon: ListChecks,
       accentClassName: 'bg-rose-100 text-rose-700',
-      detailsTitle: t('分组倍率'),
+      detailsTitle: t('倍率'),
       details: buildMetricOverviewDetails(
         multiplierOverview,
         (item) => item?.request_count || 0,
@@ -391,7 +398,7 @@ const BillingAnalysis = () => {
       value: renderQuota(summary.effective_quota_per_1k_tokens || 0, 4),
       icon: Gauge,
       accentClassName: 'bg-indigo-100 text-indigo-700',
-      detailsTitle: t('分组倍率'),
+      detailsTitle: t('倍率'),
       details: buildMetricOverviewDetails(
         multiplierOverview,
         (item) => item?.effective_quota_per_1k_tokens || 0,

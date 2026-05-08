@@ -377,8 +377,8 @@ func getBillingAnalysisGroupRatioMeta(other billingAnalysisLogOther) billingAnal
 	if other.UserGroupRatio != nil && *other.UserGroupRatio != -1 {
 		ratio := roundBillingAnalysisRatio(*other.UserGroupRatio)
 		return billingAnalysisGroupRatioMeta{
-			Key:   "group:" + formatBillingAnalysisRatioKey(ratio),
-			Label: "分组倍率 " + formatBillingAnalysisRatioLabel(ratio),
+			Key:   "user_group:" + formatBillingAnalysisRatioKey(ratio),
+			Label: "专属倍率 " + formatBillingAnalysisRatioLabel(ratio),
 			Ratio: ratio,
 		}
 	}
