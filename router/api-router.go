@@ -299,6 +299,7 @@ func SetApiRouter(router *gin.Engine) {
 		billingRoute := apiRouter.Group("/billing/analysis")
 		billingRoute.GET("/", middleware.AdminAuth(), controller.GetBillingAnalysis)
 		billingRoute.GET("/snapshot", middleware.AdminAuth(), controller.GetBusinessSnapshot)
+		billingRoute.GET("/snapshot/users", middleware.AdminAuth(), controller.GetBusinessSnapshotUsersWithBalance)
 		billingRoute.GET("/self", middleware.UserAuth(), controller.GetBillingAnalysisSelf)
 
 		systemLogRoute := apiRouter.Group("/system-log")

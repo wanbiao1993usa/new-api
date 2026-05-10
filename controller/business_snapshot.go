@@ -30,3 +30,13 @@ func GetBusinessSnapshot(c *gin.Context) {
 	}
 	common.ApiSuccess(c, result)
 }
+
+func GetBusinessSnapshotUsersWithBalance(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	result, err := model.GetBusinessSnapshotUsersWithBalance(pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}

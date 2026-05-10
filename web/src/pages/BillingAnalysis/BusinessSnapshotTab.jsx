@@ -7,7 +7,11 @@ import {
   Card,
   DatePicker,
   Empty,
+  Popover,
+  Progress,
+  SideSheet,
   Spin,
+  Tag,
   Table,
   Tooltip,
   Typography,
@@ -15,6 +19,7 @@ import {
 import { CalendarClock, RefreshCcw, Users, Wallet } from 'lucide-react';
 import {
   API,
+  copy,
   renderNumber,
   renderQuota,
   showError,
@@ -43,8 +48,19 @@ const emptySnapshot = {
   generated_at: 0,
 };
 
-const SnapshotCard = ({ icon: Icon, label, value, accentClassName, hint }) => (
-  <Card className='!rounded-lg shadow-sm' bodyStyle={{ padding: 16 }}>
+const SnapshotCard = ({
+  icon: Icon,
+  label,
+  value,
+  accentClassName,
+  hint,
+  onClick,
+}) => (
+  <Card
+    className={`!rounded-lg shadow-sm ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+    bodyStyle={{ padding: 16 }}
+    onClick={onClick}
+  >
     <div className='flex items-center justify-between gap-3 min-w-0'>
       <div className='min-w-0'>
         <Text type='secondary' size='small'>
@@ -67,6 +83,45 @@ const SnapshotCard = ({ icon: Icon, label, value, accentClassName, hint }) => (
     </div>
   </Card>
 );
+
+const renderQuotaUsageDetail = (record, t) => {
+  const remain = Number(record?.quota || 0);
+  const total = Number(record?.granted_quota || 0);
+  const percent =
+    total > 0 ? Math.max(0, Math.min(100, (remain / total) * 100)) : 0;
+
+  const popoverContent = (
+    <div className='text-xs p-2'>
+      <div>
+        {t('剩余余额')}: {renderQuota(remain)}
+      </div>
+      <div>
+        {t('总余额')}: {renderQuota(total)}
+      </div>
+      <div>
+        {t('余额占比')}: {percent.toFixed(0)}%
+      </div>
+    </div>
+  );
+
+  return (
+    <Popover content={popoverContent} position='top'>
+      <Tag color='white' shape='circle'>
+        <div className='flex flex-col items-end min-w-[110px]'>
+          <span className='text-xs leading-none'>
+            {renderQuota(remain)} / {renderQuota(total)}
+          </span>
+          <Progress
+            percent={percent}
+            aria-label='quota usage'
+            format={() => `${percent.toFixed(0)}%`}
+            style={{ width: '100%', marginTop: '1px', marginBottom: 0 }}
+          />
+        </div>
+      </Tag>
+    </Popover>
+  );
+};
 
 const percentText = (value) => `${((value || 0) * 100).toFixed(2)}%`;
 const percentValueText = (value) => `${(Number(value) || 0).toFixed(2)}%`;
@@ -94,6 +149,14 @@ const BusinessSnapshotTab = () => {
   const [loading, setLoading] = useState(false);
   const [snapshot, setSnapshot] = useState(emptySnapshot);
   const [dateRange, setDateRange] = useState(DEFAULT_RANGE);
+  const [userDrawerVisible, setUserDrawerVisible] = useState(false);
+  const [userListLoading, setUserListLoading] = useState(false);
+  const [userList, setUserList] = useState([]);
+  const [userPagination, setUserPagination] = useState({
+    page: 1,
+    page_size: 10,
+    total: 0,
+  });
 
   useEffect(() => {
     initVChartSemiTheme({
@@ -138,6 +201,42 @@ const BusinessSnapshotTab = () => {
     refresh();
   }, [refresh]);
 
+  const loadUsersWithBalance = useCallback(
+    async (page = 1, pageSize = userPagination.page_size) => {
+      setUserListLoading(true);
+      try {
+        const res = await API.get('/api/billing/analysis/snapshot/users', {
+          params: {
+            p: page,
+            page_size: pageSize,
+          },
+          disableDuplicate: true,
+        });
+        const { success, message, data } = res.data;
+        if (success) {
+          setUserList(Array.isArray(data?.items) ? data.items : []);
+          setUserPagination({
+            page: Number(data?.page || page),
+            page_size: Number(data?.page_size || pageSize),
+            total: Number(data?.total || 0),
+          });
+        } else {
+          showError(message);
+        }
+      } catch (error) {
+        showError(error);
+      } finally {
+        setUserListLoading(false);
+      }
+    },
+    [userPagination.page_size],
+  );
+
+  const openUsersWithBalanceDrawer = useCallback(async () => {
+    setUserDrawerVisible(true);
+    await loadUsersWithBalance(1, userPagination.page_size);
+  }, [loadUsersWithBalance, userPagination.page_size]);
+
   const summary = snapshot.summary || emptySnapshot.summary;
   const cards = useMemo(
     () => [
@@ -156,6 +255,7 @@ const BusinessSnapshotTab = () => {
         hint: t('按当前账户总余额大于 0 统计'),
         icon: Users,
         accentClassName: 'bg-emerald-100 text-emerald-700',
+        onClick: openUsersWithBalanceDrawer,
       },
       {
         key: 'topup-balance',
@@ -167,6 +267,77 @@ const BusinessSnapshotTab = () => {
       },
     ],
     [summary, t],
+  );
+
+  const userColumns = useMemo(
+    () => [
+      {
+        title: t('用户 ID'),
+        dataIndex: 'id',
+        key: 'id',
+        width: 90,
+      },
+      {
+        title: t('用户名'),
+        dataIndex: 'username',
+        key: 'username',
+        width: 180,
+        render: (value, record) => (
+          <div className='min-w-0'>
+            <div className='font-medium truncate'>{value || '-'}</div>
+            <Text type='tertiary' size='small' className='truncate block'>
+              {record?.email || '-'}
+            </Text>
+          </div>
+        ),
+      },
+      {
+        title: t('剩余余额 / 总余额'),
+        dataIndex: 'quota',
+        key: 'quota',
+        width: 180,
+        align: 'right',
+        sorter: (a, b) => (a.quota || 0) - (b.quota || 0),
+        render: (value, record) => renderQuotaUsageDetail(record, t),
+      },
+      {
+        title: t('分组'),
+        dataIndex: 'group',
+        key: 'group',
+        width: 120,
+      },
+      {
+        title: t('在线充值单数'),
+        dataIndex: 'topup_order_count',
+        key: 'topup_order_count',
+        width: 130,
+        align: 'right',
+        render: (value) => renderNumber(value || 0),
+      },
+      {
+        title: t('兑换码次数'),
+        dataIndex: 'redeemed_count',
+        key: 'redeemed_count',
+        width: 120,
+        align: 'right',
+        render: (value) => renderNumber(value || 0),
+      },
+      {
+        title: t('创建时间'),
+        dataIndex: 'created_at',
+        key: 'created_at',
+        width: 180,
+        render: (value) => (value ? timestamp2string(value) : '-'),
+      },
+      {
+        title: t('最近登录时间'),
+        dataIndex: 'last_login_at',
+        key: 'last_login_at',
+        width: 180,
+        render: (value) => (value ? timestamp2string(value) : '-'),
+      },
+    ],
+    [t],
   );
 
   const countTrendValues = useMemo(
@@ -416,6 +587,55 @@ const BusinessSnapshotTab = () => {
 
   return (
     <div className='space-y-4'>
+      <SideSheet
+        title={t('充值过且当前仍有余额的用户明细')}
+        visible={userDrawerVisible}
+        onCancel={() => setUserDrawerVisible(false)}
+        width={960}
+        bodyStyle={{ padding: 0 }}
+      >
+        <div className='p-4 space-y-3'>
+          <Text type='secondary'>
+            {t(
+              '仅展示当前余额大于 0，且至少有一次在线充值或兑换码额度兑换的用户',
+            )}
+          </Text>
+          <Table
+            loading={userListLoading}
+            columns={userColumns}
+            dataSource={userList}
+            rowKey={(record) => record.id}
+            size='small'
+            pagination={{
+              currentPage: userPagination.page,
+              pageSize: userPagination.page_size,
+              total: userPagination.total,
+              pageSizeOptions: [10, 20, 50],
+              onPageChange: (page) =>
+                loadUsersWithBalance(page, userPagination.page_size),
+              onPageSizeChange: (pageSize) => loadUsersWithBalance(1, pageSize),
+            }}
+            scroll={{ x: 'max-content' }}
+            empty={<Empty description={t('暂无数据')} />}
+          />
+          <div className='flex justify-end'>
+            <Button
+              type='tertiary'
+              size='small'
+              onClick={async () => {
+                const lines = userList.map(
+                  (user) =>
+                    `${user.id}\t${user.username}\t${user.email || '-'}\t${renderQuota(user.quota || 0)} / ${renderQuota(user.granted_quota || 0)}`,
+                );
+                await copy(lines.join('\n'));
+              }}
+            >
+              {t('复制当前页')}
+            </Button>
+          </div>
+        </div>
+      </SideSheet>
+
       <div className='flex items-center justify-between gap-3'>
         <div className='min-w-0'>
           <Text type='secondary'>{t('当前运营快照 + 所选区间趋势')}</Text>

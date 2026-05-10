@@ -31,9 +31,32 @@ type BusinessSnapshotResult struct {
 	EndTimestamp   int64                      `json:"end_timestamp"`
 }
 
+type BusinessSnapshotPaidUserRow struct {
+	Id              int    `json:"id"`
+	Username        string `json:"username"`
+	Email           string `json:"email"`
+	Group           string `json:"group"`
+	Quota           int    `json:"quota"`
+	GrantedQuota    int64  `json:"granted_quota"`
+	CreatedAt       int64  `json:"created_at"`
+	LastLoginAt     int64  `json:"last_login_at"`
+	TopupOrderCount int64  `json:"topup_order_count"`
+	RedeemedCount   int64  `json:"redeemed_count"`
+}
+
 type businessSnapshotDayCountRow struct {
 	Day   string `json:"day"`
 	Count int64  `json:"count"`
+}
+
+type businessSnapshotUserCountRow struct {
+	UserId int `gorm:"column:user_id"`
+	Count  int `gorm:"column:count"`
+}
+
+type businessSnapshotUserQuotaSumRow struct {
+	UserId int   `gorm:"column:user_id"`
+	Quota  int64 `gorm:"column:quota"`
 }
 
 func GetBusinessSnapshot(days int) (BusinessSnapshotResult, error) {
@@ -128,9 +151,7 @@ func normalizeBusinessSnapshotDays(days int) int {
 	return days
 }
 
-func getBusinessSnapshotSummary() (BusinessSnapshotSummary, error) {
-	var summary BusinessSnapshotSummary
-
+func getBusinessSnapshotPaidUserIDs() ([]int, error) {
 	paidUserSet := make(map[int]struct{})
 
 	topupUserIDs := make([]int, 0)
@@ -138,8 +159,7 @@ func getBusinessSnapshotSummary() (BusinessSnapshotSummary, error) {
 		Where("status = ? AND amount > 0", common.TopUpStatusSuccess).
 		Distinct("user_id").
 		Pluck("user_id", &topupUserIDs).Error; err != nil {
-		common.SysError("failed to query topup user ids for business snapshot: " + err.Error())
-		return summary, errors.New("查询业务快照失败")
+		return nil, err
 	}
 	for _, userId := range topupUserIDs {
 		if userId > 0 {
@@ -156,8 +176,7 @@ func getBusinessSnapshotSummary() (BusinessSnapshotSummary, error) {
 		).
 		Distinct("used_user_id").
 		Pluck("used_user_id", &redemptionUserIDs).Error; err != nil {
-		common.SysError("failed to query redemption user ids for business snapshot: " + err.Error())
-		return summary, errors.New("查询业务快照失败")
+		return nil, err
 	}
 	for _, userId := range redemptionUserIDs {
 		if userId > 0 {
@@ -165,11 +184,22 @@ func getBusinessSnapshotSummary() (BusinessSnapshotSummary, error) {
 		}
 	}
 
-	if len(paidUserSet) > 0 {
-		paidUserIDs := make([]int, 0, len(paidUserSet))
-		for userId := range paidUserSet {
-			paidUserIDs = append(paidUserIDs, userId)
-		}
+	paidUserIDs := make([]int, 0, len(paidUserSet))
+	for userId := range paidUserSet {
+		paidUserIDs = append(paidUserIDs, userId)
+	}
+	return paidUserIDs, nil
+}
+
+func getBusinessSnapshotSummary() (BusinessSnapshotSummary, error) {
+	var summary BusinessSnapshotSummary
+
+	paidUserIDs, err := getBusinessSnapshotPaidUserIDs()
+	if err != nil {
+		common.SysError("failed to query paid user ids for business snapshot: " + err.Error())
+		return summary, errors.New("查询业务快照失败")
+	}
+	if len(paidUserIDs) > 0 {
 		summary.TopupPaidUsersCount = int64(len(paidUserIDs))
 
 		var users []User
@@ -187,6 +217,146 @@ func getBusinessSnapshotSummary() (BusinessSnapshotSummary, error) {
 	}
 
 	return summary, nil
+}
+
+func GetBusinessSnapshotUsersWithBalance(pageInfo *common.PageInfo) (*common.PageInfo, error) {
+	if pageInfo == nil {
+		pageInfo = &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
+	}
+
+	paidUserIDs, err := getBusinessSnapshotPaidUserIDs()
+	if err != nil {
+		common.SysError("failed to query paid user ids for business snapshot users: " + err.Error())
+		return nil, errors.New("查询业务快照失败")
+	}
+
+	pageInfo.SetItems([]BusinessSnapshotPaidUserRow{})
+	pageInfo.SetTotal(0)
+	if len(paidUserIDs) == 0 {
+		return pageInfo, nil
+	}
+
+	var total int64
+	if err := DB.Model(&User{}).
+		Where("id IN ? AND quota > 0", paidUserIDs).
+		Count(&total).Error; err != nil {
+		common.SysError("failed to count paid users with balance: " + err.Error())
+		return nil, errors.New("查询业务快照失败")
+	}
+
+	pageInfo.SetTotal(int(total))
+	if total == 0 {
+		return pageInfo, nil
+	}
+
+	var users []User
+	if err := DB.Select("id", "username", "email", "group", "quota", "created_at", "last_login_at").
+		Where("id IN ? AND quota > 0", paidUserIDs).
+		Order("quota desc, last_login_at desc, id desc").
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Find(&users).Error; err != nil {
+		common.SysError("failed to query paid users with balance: " + err.Error())
+		return nil, errors.New("查询业务快照失败")
+	}
+
+	if len(users) == 0 {
+		return pageInfo, nil
+	}
+
+	userIDs := make([]int, 0, len(users))
+	for _, user := range users {
+		userIDs = append(userIDs, user.Id)
+	}
+
+	topupCounts := make(map[int]int)
+	topupRows := make([]businessSnapshotUserCountRow, 0)
+	if err := DB.Model(&TopUp{}).
+		Select("user_id, COUNT(*) AS count").
+		Where("user_id IN ? AND status = ? AND amount > 0", userIDs, common.TopUpStatusSuccess).
+		Group("user_id").
+		Scan(&topupRows).Error; err != nil {
+		common.SysError("failed to query topup counts for business snapshot users: " + err.Error())
+		return nil, errors.New("查询业务快照失败")
+	}
+	for _, row := range topupRows {
+		topupCounts[row.UserId] = row.Count
+	}
+
+	redemptionCounts := make(map[int]int)
+	redemptionRows := make([]businessSnapshotUserCountRow, 0)
+	if err := DB.Model(&Redemption{}).
+		Select("used_user_id AS user_id, COUNT(*) AS count").
+		Where(
+			"used_user_id IN ? AND status = ? AND type = ?",
+			userIDs,
+			common.RedemptionCodeStatusUsed,
+			RedemptionTypeQuota,
+		).
+		Group("used_user_id").
+		Scan(&redemptionRows).Error; err != nil {
+		common.SysError("failed to query redemption counts for business snapshot users: " + err.Error())
+		return nil, errors.New("查询业务快照失败")
+	}
+	for _, row := range redemptionRows {
+		redemptionCounts[row.UserId] = row.Count
+	}
+
+	grantedQuotaByUser := make(map[int]int64)
+	topupQuotaRows := make([]businessSnapshotUserQuotaSumRow, 0)
+	if err := DB.Model(&TopUp{}).
+		Select(
+			"user_id, SUM(CASE WHEN payment_provider = ? THEN CAST(money * ? AS INTEGER) ELSE CAST(amount * ? AS INTEGER) END) AS quota",
+			PaymentProviderStripe,
+			common.QuotaPerUnit,
+			common.QuotaPerUnit,
+		).
+		Where("user_id IN ? AND status = ? AND amount > 0", userIDs, common.TopUpStatusSuccess).
+		Group("user_id").
+		Scan(&topupQuotaRows).Error; err != nil {
+		common.SysError("failed to query topup quota sum for business snapshot users: " + err.Error())
+		return nil, errors.New("查询业务快照失败")
+	}
+	for _, row := range topupQuotaRows {
+		grantedQuotaByUser[row.UserId] += row.Quota
+	}
+
+	redemptionQuotaRows := make([]businessSnapshotUserQuotaSumRow, 0)
+	if err := DB.Model(&Redemption{}).
+		Select("used_user_id AS user_id, SUM(quota) AS quota").
+		Where(
+			"used_user_id IN ? AND status = ? AND type = ?",
+			userIDs,
+			common.RedemptionCodeStatusUsed,
+			RedemptionTypeQuota,
+		).
+		Group("used_user_id").
+		Scan(&redemptionQuotaRows).Error; err != nil {
+		common.SysError("failed to query redemption quota sum for business snapshot users: " + err.Error())
+		return nil, errors.New("查询业务快照失败")
+	}
+	for _, row := range redemptionQuotaRows {
+		grantedQuotaByUser[row.UserId] += row.Quota
+	}
+
+	items := make([]BusinessSnapshotPaidUserRow, 0, len(users))
+	for _, user := range users {
+		items = append(items, BusinessSnapshotPaidUserRow{
+			Id:              user.Id,
+			Username:        user.Username,
+			Email:           user.Email,
+			Group:           user.Group,
+			Quota:           user.Quota,
+			GrantedQuota:    grantedQuotaByUser[user.Id],
+			CreatedAt:       user.CreatedAt,
+			LastLoginAt:     user.LastLoginAt,
+			TopupOrderCount: int64(topupCounts[user.Id]),
+			RedeemedCount:   int64(redemptionCounts[user.Id]),
+		})
+	}
+
+	pageInfo.SetItems(items)
+	return pageInfo, nil
 }
 
 func getBusinessSnapshotDailyRows(startDay time.Time, startTimestamp int64, endTimestamp int64, days int) ([]BusinessSnapshotDailyRow, error) {
