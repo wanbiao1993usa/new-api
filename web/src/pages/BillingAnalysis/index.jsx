@@ -52,6 +52,7 @@ import {
 } from '../../helpers';
 import { DATE_RANGE_PRESETS } from '../../constants/console.constants';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
+import BusinessSnapshotTab from './BusinessSnapshotTab';
 
 const { Text, Title } = Typography;
 
@@ -229,6 +230,7 @@ const BillingAnalysis = () => {
   const [formApi, setFormApi] = useState(null);
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState(emptyAnalysis);
+  const [adminView, setAdminView] = useState('consume');
 
   const formInitValues = useMemo(
     () => ({
@@ -515,121 +517,146 @@ const BillingAnalysis = () => {
         </Title>
       </div>
 
-      <Card className='!rounded-lg shadow-sm' bodyStyle={{ padding: 16 }}>
-        <Form
-          initValues={formInitValues}
-          getFormApi={(api) => setFormApi(api)}
-          onSubmit={refresh}
-          allowEmpty={true}
-          autoComplete='off'
-          layout='vertical'
-          trigger='change'
-          stopValidateWithError={false}
+      {isAdminUser && (
+        <Card
+          className='!rounded-lg shadow-sm'
+          bodyStyle={{ padding: '0 16px' }}
         >
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2'>
-            <div className='lg:col-span-2'>
-              <Form.DatePicker
-                field='dateRange'
-                className='w-full'
-                type='dateTimeRange'
-                placeholder={[t('开始时间'), t('结束时间')]}
-                showClear
-                pure
-                size='small'
-                presets={DATE_RANGE_PRESETS.map((preset) => ({
-                  text: t(preset.text),
-                  start: preset.start(),
-                  end: preset.end(),
-                }))}
-              />
-            </div>
-            <Form.Input
-              field='token_name'
-              placeholder={t('令牌名称')}
-              showClear
-              pure
-              size='small'
-            />
-            <Form.Input
-              field='model_name'
-              placeholder={t('模型名称')}
-              showClear
-              pure
-              size='small'
-            />
-            <Form.Input
-              field='group'
-              placeholder={t('分组')}
-              showClear
-              pure
-              size='small'
-            />
-            {isAdminUser && (
-              <>
-                <Form.Input
-                  field='username'
-                  placeholder={t('用户名称')}
-                  showClear
-                  pure
-                  size='small'
-                />
-                <Form.Input
-                  field='channel'
-                  placeholder={t('渠道 ID')}
-                  showClear
-                  pure
-                  size='small'
-                />
-              </>
-            )}
-          </div>
-          <div className='mt-3 flex justify-end gap-2'>
-            <Button
-              type='tertiary'
-              htmlType='submit'
-              loading={loading}
-              icon={<Search size={15} />}
-              size='small'
-            >
-              {t('查询')}
-            </Button>
-            <Button
-              type='tertiary'
-              onClick={resetFilters}
-              icon={<RotateCcw size={15} />}
-              size='small'
-            >
-              {t('重置')}
-            </Button>
-          </div>
-        </Form>
-      </Card>
-
-      <Spin spinning={loading}>
-        <div className='grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3'>
-          {statCards.map((card) => (
-            <StatCard key={card.key} {...card} />
-          ))}
-        </div>
-
-        <Card className='!rounded-lg shadow-sm mt-4' bodyStyle={{ padding: 0 }}>
-          <Tabs type='line' className='px-4 pt-2'>
-            {tabs.map((tab) => (
-              <TabPane tab={tab.tab} itemKey={tab.itemKey} key={tab.itemKey}>
-                <Table
-                  columns={columns}
-                  dataSource={tab.data}
-                  rowKey={(record) => `${tab.itemKey}-${record.key}`}
-                  size='small'
-                  pagination={tablePagination}
-                  scroll={{ x: 'max-content' }}
-                  empty={<Empty description={t('搜索无结果')} />}
-                />
-              </TabPane>
-            ))}
+          <Tabs type='line' activeKey={adminView} onChange={setAdminView}>
+            <TabPane tab={t('消费分析')} itemKey='consume' />
+            <TabPane tab={t('运营快照')} itemKey='snapshot' />
           </Tabs>
         </Card>
-      </Spin>
+      )}
+
+      {isAdminUser && adminView === 'snapshot' ? (
+        <BusinessSnapshotTab />
+      ) : (
+        <>
+          <Card className='!rounded-lg shadow-sm' bodyStyle={{ padding: 16 }}>
+            <Form
+              initValues={formInitValues}
+              getFormApi={(api) => setFormApi(api)}
+              onSubmit={refresh}
+              allowEmpty={true}
+              autoComplete='off'
+              layout='vertical'
+              trigger='change'
+              stopValidateWithError={false}
+            >
+              <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2'>
+                <div className='lg:col-span-2'>
+                  <Form.DatePicker
+                    field='dateRange'
+                    className='w-full'
+                    type='dateTimeRange'
+                    placeholder={[t('开始时间'), t('结束时间')]}
+                    showClear
+                    pure
+                    size='small'
+                    presets={DATE_RANGE_PRESETS.map((preset) => ({
+                      text: t(preset.text),
+                      start: preset.start(),
+                      end: preset.end(),
+                    }))}
+                  />
+                </div>
+                <Form.Input
+                  field='token_name'
+                  placeholder={t('令牌名称')}
+                  showClear
+                  pure
+                  size='small'
+                />
+                <Form.Input
+                  field='model_name'
+                  placeholder={t('模型名称')}
+                  showClear
+                  pure
+                  size='small'
+                />
+                <Form.Input
+                  field='group'
+                  placeholder={t('分组')}
+                  showClear
+                  pure
+                  size='small'
+                />
+                {isAdminUser && (
+                  <>
+                    <Form.Input
+                      field='username'
+                      placeholder={t('用户名称')}
+                      showClear
+                      pure
+                      size='small'
+                    />
+                    <Form.Input
+                      field='channel'
+                      placeholder={t('渠道 ID')}
+                      showClear
+                      pure
+                      size='small'
+                    />
+                  </>
+                )}
+              </div>
+              <div className='mt-3 flex justify-end gap-2'>
+                <Button
+                  type='tertiary'
+                  htmlType='submit'
+                  loading={loading}
+                  icon={<Search size={15} />}
+                  size='small'
+                >
+                  {t('查询')}
+                </Button>
+                <Button
+                  type='tertiary'
+                  onClick={resetFilters}
+                  icon={<RotateCcw size={15} />}
+                  size='small'
+                >
+                  {t('重置')}
+                </Button>
+              </div>
+            </Form>
+          </Card>
+
+          <Spin spinning={loading}>
+            <div className='grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3'>
+              {statCards.map((card) => (
+                <StatCard key={card.key} {...card} />
+              ))}
+            </div>
+
+            <Card
+              className='!rounded-lg shadow-sm mt-4'
+              bodyStyle={{ padding: 0 }}
+            >
+              <Tabs type='line' className='px-4 pt-2'>
+                {tabs.map((tab) => (
+                  <TabPane
+                    tab={tab.tab}
+                    itemKey={tab.itemKey}
+                    key={tab.itemKey}
+                  >
+                    <Table
+                      columns={columns}
+                      dataSource={tab.data}
+                      rowKey={(record) => `${tab.itemKey}-${record.key}`}
+                      size='small'
+                      pagination={tablePagination}
+                      scroll={{ x: 'max-content' }}
+                      empty={<Empty description={t('搜索无结果')} />}
+                    />
+                  </TabPane>
+                ))}
+              </Tabs>
+            </Card>
+          </Spin>
+        </>
+      )}
     </div>
   );
 };
