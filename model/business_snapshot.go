@@ -131,6 +131,8 @@ func normalizeBusinessSnapshotDays(days int) int {
 func getBusinessSnapshotSummary() (BusinessSnapshotSummary, error) {
 	var summary BusinessSnapshotSummary
 
+	paidUserSet := make(map[int]struct{})
+
 	topupUserIDs := make([]int, 0)
 	if err := DB.Model(&TopUp{}).
 		Where("status = ? AND amount > 0", common.TopUpStatusSuccess).
@@ -139,13 +141,40 @@ func getBusinessSnapshotSummary() (BusinessSnapshotSummary, error) {
 		common.SysError("failed to query topup user ids for business snapshot: " + err.Error())
 		return summary, errors.New("查询业务快照失败")
 	}
+	for _, userId := range topupUserIDs {
+		if userId > 0 {
+			paidUserSet[userId] = struct{}{}
+		}
+	}
 
-	if len(topupUserIDs) > 0 {
-		summary.TopupPaidUsersCount = int64(len(topupUserIDs))
+	redemptionUserIDs := make([]int, 0)
+	if err := DB.Model(&Redemption{}).
+		Where(
+			"status = ? AND type = ? AND used_user_id > 0",
+			common.RedemptionCodeStatusUsed,
+			RedemptionTypeQuota,
+		).
+		Distinct("used_user_id").
+		Pluck("used_user_id", &redemptionUserIDs).Error; err != nil {
+		common.SysError("failed to query redemption user ids for business snapshot: " + err.Error())
+		return summary, errors.New("查询业务快照失败")
+	}
+	for _, userId := range redemptionUserIDs {
+		if userId > 0 {
+			paidUserSet[userId] = struct{}{}
+		}
+	}
+
+	if len(paidUserSet) > 0 {
+		paidUserIDs := make([]int, 0, len(paidUserSet))
+		for userId := range paidUserSet {
+			paidUserIDs = append(paidUserIDs, userId)
+		}
+		summary.TopupPaidUsersCount = int64(len(paidUserIDs))
 
 		var users []User
 		if err := DB.Select("id", "quota").
-			Where("id IN ? AND quota > 0", topupUserIDs).
+			Where("id IN ? AND quota > 0", paidUserIDs).
 			Find(&users).Error; err != nil {
 			common.SysError("failed to query topup users for business snapshot: " + err.Error())
 			return summary, errors.New("查询业务快照失败")

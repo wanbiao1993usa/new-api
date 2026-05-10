@@ -19,6 +19,11 @@ func insertBusinessSnapshotTopUp(t *testing.T, topUp TopUp) {
 	require.NoError(t, DB.Create(&topUp).Error)
 }
 
+func insertBusinessSnapshotRedemption(t *testing.T, redemption Redemption) {
+	t.Helper()
+	require.NoError(t, DB.Create(&redemption).Error)
+}
+
 func insertBusinessSnapshotLog(t *testing.T, log Log) {
 	t.Helper()
 	require.NoError(t, LOG_DB.Create(&log).Error)
@@ -36,6 +41,7 @@ func TestGetBusinessSnapshotSummariesAndDailyRows(t *testing.T) {
 	insertBusinessSnapshotUser(t, User{Id: 102, Username: "bob", AffCode: "ba2", Quota: 80, CreatedAt: day2})
 	insertBusinessSnapshotUser(t, User{Id: 103, Username: "carol", AffCode: "ba3", Quota: 10, CreatedAt: day2})
 	insertBusinessSnapshotUser(t, User{Id: 104, Username: "dave", AffCode: "ba4", Quota: 50, CreatedAt: day3})
+	insertBusinessSnapshotUser(t, User{Id: 105, Username: "erin", AffCode: "ba5", Quota: 70, CreatedAt: day3})
 
 	insertBusinessSnapshotTopUp(t, TopUp{
 		Id:           1,
@@ -64,6 +70,17 @@ func TestGetBusinessSnapshotSummariesAndDailyRows(t *testing.T) {
 		Status:       common.TopUpStatusSuccess,
 		CompleteTime: day3,
 	})
+	insertBusinessSnapshotRedemption(t, Redemption{
+		Id:           1,
+		Key:          "snapshot-redemption-1",
+		Status:       common.RedemptionCodeStatusUsed,
+		Name:         "snapshot quota redemption",
+		Quota:        70,
+		Type:         RedemptionTypeQuota,
+		CreatedTime:  day3,
+		RedeemedTime: day3,
+		UsedUserId:   105,
+	})
 
 	insertBusinessSnapshotLog(t, Log{
 		Id:        1,
@@ -90,9 +107,9 @@ func TestGetBusinessSnapshotSummariesAndDailyRows(t *testing.T) {
 	result, err := getBusinessSnapshotAt(now, 3)
 	require.NoError(t, err)
 
-	assert.EqualValues(t, 3, result.Summary.TopupPaidUsersCount)
-	assert.EqualValues(t, 3, result.Summary.TopupUsersWithBalanceCount)
-	assert.EqualValues(t, 210, result.Summary.TopupCurrentBalanceSum)
+	assert.EqualValues(t, 4, result.Summary.TopupPaidUsersCount)
+	assert.EqualValues(t, 4, result.Summary.TopupUsersWithBalanceCount)
+	assert.EqualValues(t, 280, result.Summary.TopupCurrentBalanceSum)
 
 	require.Len(t, result.Daily, 3)
 	assert.Equal(t, "2026-05-08", result.Daily[0].Date)
@@ -110,10 +127,10 @@ func TestGetBusinessSnapshotSummariesAndDailyRows(t *testing.T) {
 
 	assert.Equal(t, "2026-05-10", result.Daily[2].Date)
 	assert.EqualValues(t, 1, result.Daily[2].UsedUserCount)
-	assert.EqualValues(t, 1, result.Daily[2].NewUserCount)
-	assert.EqualValues(t, 4, result.Daily[2].TotalUserCount)
-	assert.InDelta(t, 0.25, result.Daily[2].UsedUserRate, 0.0001)
-	assert.InDelta(t, 0.25, result.Daily[2].NewUserRate, 0.0001)
+	assert.EqualValues(t, 2, result.Daily[2].NewUserCount)
+	assert.EqualValues(t, 5, result.Daily[2].TotalUserCount)
+	assert.InDelta(t, 0.2, result.Daily[2].UsedUserRate, 0.0001)
+	assert.InDelta(t, 0.4, result.Daily[2].NewUserRate, 0.0001)
 }
 
 func TestGetBusinessSnapshotByRangeDailyRows(t *testing.T) {
