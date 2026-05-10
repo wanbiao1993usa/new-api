@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { VChart } from '@visactor/react-vchart';
+import { initVChartSemiTheme } from '@visactor/vchart-semi-theme';
 import {
   Button,
   Card,
@@ -10,7 +12,7 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { CalendarClock, Coins, RefreshCcw, Users, Wallet } from 'lucide-react';
+import { CalendarClock, RefreshCcw, Users, Wallet } from 'lucide-react';
 import {
   API,
   renderNumber,
@@ -20,6 +22,7 @@ import {
 } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { DATE_RANGE_PRESETS } from '../../constants/console.constants';
+import { CHART_CONFIG } from '../../constants/dashboard.constants';
 
 const { Text } = Typography;
 
@@ -31,10 +34,9 @@ const DEFAULT_RANGE = [
 
 const emptySnapshot = {
   summary: {
+    topup_paid_users_count: 0,
     topup_users_with_balance_count: 0,
-    topup_balance_sum_after_signup_gift: 0,
-    subscription_users_with_remaining_count: 0,
-    subscription_remaining_quota_sum: 0,
+    topup_current_balance_sum: 0,
   },
   daily: [],
   days: DEFAULT_DAYS,
@@ -67,6 +69,7 @@ const SnapshotCard = ({ icon: Icon, label, value, accentClassName, hint }) => (
 );
 
 const percentText = (value) => `${((value || 0) * 100).toFixed(2)}%`;
+const percentValueText = (value) => `${(Number(value) || 0).toFixed(2)}%`;
 
 const toTimestamp = (value) => {
   if (!value) {
@@ -91,6 +94,12 @@ const BusinessSnapshotTab = () => {
   const [loading, setLoading] = useState(false);
   const [snapshot, setSnapshot] = useState(emptySnapshot);
   const [dateRange, setDateRange] = useState(DEFAULT_RANGE);
+
+  useEffect(() => {
+    initVChartSemiTheme({
+      isWatchingThemeSwitch: true,
+    });
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -133,41 +142,218 @@ const BusinessSnapshotTab = () => {
   const cards = useMemo(
     () => [
       {
+        key: 'topup-paid-users',
+        label: t('成功充值用户数'),
+        value: renderNumber(summary.topup_paid_users_count || 0),
+        hint: t('按成功充值订单去重用户'),
+        icon: Users,
+        accentClassName: 'bg-teal-100 text-teal-700',
+      },
+      {
         key: 'topup-users',
-        label: t('充值后仍有余额的用户数'),
+        label: t('充值过且当前仍有余额的用户数'),
         value: renderNumber(summary.topup_users_with_balance_count || 0),
-        hint: t('余额已扣除注册送金'),
+        hint: t('按当前账户总余额大于 0 统计'),
         icon: Users,
         accentClassName: 'bg-emerald-100 text-emerald-700',
       },
       {
         key: 'topup-balance',
-        label: t('充值后当前剩余余额总额'),
-        value: renderQuota(summary.topup_balance_sum_after_signup_gift || 0),
-        hint: t('余额已扣除注册送金'),
+        label: t('充值用户当前账户余额总额'),
+        value: renderQuota(summary.topup_current_balance_sum || 0),
+        hint: t('直接统计当前账户总余额'),
         icon: Wallet,
         accentClassName: 'bg-amber-100 text-amber-700',
       },
-      {
-        key: 'sub-users',
-        label: t('订阅后仍有剩余额度的用户数'),
-        value: renderNumber(
-          summary.subscription_users_with_remaining_count || 0,
-        ),
-        hint: t('仅统计仍有可用订阅额度的活跃订阅'),
-        icon: Users,
-        accentClassName: 'bg-sky-100 text-sky-700',
-      },
-      {
-        key: 'sub-balance',
-        label: t('订阅当前剩余额度总额'),
-        value: renderQuota(summary.subscription_remaining_quota_sum || 0),
-        hint: t('仅统计仍有可用订阅额度的活跃订阅'),
-        icon: Coins,
-        accentClassName: 'bg-indigo-100 text-indigo-700',
-      },
     ],
     [summary, t],
+  );
+
+  const countTrendValues = useMemo(
+    () =>
+      (snapshot.daily || []).flatMap((row) => [
+        {
+          date: row.date,
+          metric: t('累计总用户数'),
+          value: Number(row.total_user_count || 0),
+        },
+        {
+          date: row.date,
+          metric: t('使用用户数'),
+          value: Number(row.used_user_count || 0),
+        },
+        {
+          date: row.date,
+          metric: t('新增用户数'),
+          value: Number(row.new_user_count || 0),
+        },
+      ]),
+    [snapshot.daily, t],
+  );
+
+  const rateTrendValues = useMemo(
+    () =>
+      (snapshot.daily || []).flatMap((row) => [
+        {
+          date: row.date,
+          metric: t('使用率'),
+          value: Number(((row.used_user_rate || 0) * 100).toFixed(2)),
+        },
+        {
+          date: row.date,
+          metric: t('新增率'),
+          value: Number(((row.new_user_rate || 0) * 100).toFixed(2)),
+        },
+      ]),
+    [snapshot.daily, t],
+  );
+
+  const countTrendSpec = useMemo(
+    () => ({
+      type: 'line',
+      data: [
+        {
+          id: 'businessSnapshotCountTrend',
+          values: countTrendValues,
+        },
+      ],
+      xField: 'date',
+      yField: 'value',
+      seriesField: 'metric',
+      padding: {
+        top: 12,
+        right: 16,
+        bottom: 12,
+        left: 8,
+      },
+      title: {
+        visible: true,
+        text: t('用户规模趋势'),
+        subtext: t('展示累计总用户、使用用户和新增用户变化'),
+      },
+      legends: {
+        visible: true,
+        orient: 'top',
+      },
+      point: {
+        visible: true,
+        style: {
+          size: 5,
+        },
+      },
+      line: {
+        style: {
+          lineWidth: 2,
+        },
+      },
+      axes: [
+        {
+          orient: 'bottom',
+          label: {
+            autoRotate: true,
+          },
+        },
+        {
+          orient: 'left',
+          label: {
+            formatMethod: (value) => renderNumber(Number(value || 0)),
+          },
+        },
+      ],
+      tooltip: {
+        dimension: {
+          updateContent: (items) =>
+            (items || []).map((item) => ({
+              ...item,
+              value: renderNumber(Number(item?.datum?.value || 0)),
+            })),
+        },
+      },
+      color: {
+        specified: {
+          [t('累计总用户数')]: '#0f766e',
+          [t('使用用户数')]: '#2563eb',
+          [t('新增用户数')]: '#f59e0b',
+        },
+      },
+    }),
+    [countTrendValues, t],
+  );
+
+  const rateTrendSpec = useMemo(
+    () => ({
+      type: 'area',
+      data: [
+        {
+          id: 'businessSnapshotRateTrend',
+          values: rateTrendValues,
+        },
+      ],
+      xField: 'date',
+      yField: 'value',
+      seriesField: 'metric',
+      padding: {
+        top: 12,
+        right: 16,
+        bottom: 12,
+        left: 8,
+      },
+      title: {
+        visible: true,
+        text: t('用户活跃效率趋势'),
+        subtext: t('展示使用率和新增率变化'),
+      },
+      legends: {
+        visible: true,
+        orient: 'top',
+      },
+      point: {
+        visible: true,
+        style: {
+          size: 5,
+        },
+      },
+      area: {
+        style: {
+          fillOpacity: 0.18,
+        },
+      },
+      line: {
+        style: {
+          lineWidth: 2,
+        },
+      },
+      axes: [
+        {
+          orient: 'bottom',
+          label: {
+            autoRotate: true,
+          },
+        },
+        {
+          orient: 'left',
+          label: {
+            formatMethod: (value) => percentValueText(value),
+          },
+        },
+      ],
+      tooltip: {
+        dimension: {
+          updateContent: (items) =>
+            (items || []).map((item) => ({
+              ...item,
+              value: percentValueText(item?.datum?.value || 0),
+            })),
+        },
+      },
+      color: {
+        specified: {
+          [t('使用率')]: '#7c3aed',
+          [t('新增率')]: '#ec4899',
+        },
+      },
+    }),
+    [rateTrendValues, t],
   );
 
   const columns = useMemo(
@@ -273,6 +459,31 @@ const BusinessSnapshotTab = () => {
           {cards.map((card) => (
             <SnapshotCard key={card.key} {...card} />
           ))}
+        </div>
+
+        <div className='grid grid-cols-1 xl:grid-cols-2 gap-3'>
+          <Card className='!rounded-lg shadow-sm' bodyStyle={{ padding: 12 }}>
+            <div className='h-[320px]'>
+              {countTrendValues.length > 0 ? (
+                <VChart spec={countTrendSpec} option={CHART_CONFIG} />
+              ) : (
+                <div className='h-full flex items-center justify-center'>
+                  <Empty description={t('暂无数据')} />
+                </div>
+              )}
+            </div>
+          </Card>
+          <Card className='!rounded-lg shadow-sm' bodyStyle={{ padding: 12 }}>
+            <div className='h-[320px]'>
+              {rateTrendValues.length > 0 ? (
+                <VChart spec={rateTrendSpec} option={CHART_CONFIG} />
+              ) : (
+                <div className='h-full flex items-center justify-center'>
+                  <Empty description={t('暂无数据')} />
+                </div>
+              )}
+            </div>
+          </Card>
         </div>
 
         <Card className='!rounded-lg shadow-sm'>

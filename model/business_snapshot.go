@@ -8,10 +8,9 @@ import (
 )
 
 type BusinessSnapshotSummary struct {
-	TopupUsersWithBalanceCount        int64 `json:"topup_users_with_balance_count"`
-	TopupBalanceSumAfterSignupGift    int64 `json:"topup_balance_sum_after_signup_gift"`
-	SubscriptionUsersWithRemainingCnt int64 `json:"subscription_users_with_remaining_count"`
-	SubscriptionRemainingQuotaSum     int64 `json:"subscription_remaining_quota_sum"`
+	TopupPaidUsersCount        int64 `json:"topup_paid_users_count"`
+	TopupUsersWithBalanceCount int64 `json:"topup_users_with_balance_count"`
+	TopupCurrentBalanceSum     int64 `json:"topup_current_balance_sum"`
 }
 
 type BusinessSnapshotDailyRow struct {
@@ -56,7 +55,7 @@ func getBusinessSnapshotAt(now time.Time, days int) (BusinessSnapshotResult, err
 	startTimestamp := startDay.Unix()
 	endTimestamp := endDay.Unix()
 
-	summary, err := getBusinessSnapshotSummary(now.Unix())
+	summary, err := getBusinessSnapshotSummary()
 	if err != nil {
 		return result, err
 	}
@@ -101,7 +100,7 @@ func getBusinessSnapshotByRangeAt(now time.Time, startTimestamp int64, endTimest
 		dayCount = 1
 	}
 
-	summary, err := getBusinessSnapshotSummary(now.Unix())
+	summary, err := getBusinessSnapshotSummary()
 	if err != nil {
 		return result, err
 	}
@@ -129,7 +128,7 @@ func normalizeBusinessSnapshotDays(days int) int {
 	return days
 }
 
-func getBusinessSnapshotSummary(nowUnix int64) (BusinessSnapshotSummary, error) {
+func getBusinessSnapshotSummary() (BusinessSnapshotSummary, error) {
 	var summary BusinessSnapshotSummary
 
 	topupUserIDs := make([]int, 0)
@@ -142,41 +141,20 @@ func getBusinessSnapshotSummary(nowUnix int64) (BusinessSnapshotSummary, error) 
 	}
 
 	if len(topupUserIDs) > 0 {
+		summary.TopupPaidUsersCount = int64(len(topupUserIDs))
+
 		var users []User
-		if err := DB.Select("id", "quota").Where("id IN ?", topupUserIDs).Find(&users).Error; err != nil {
+		if err := DB.Select("id", "quota").
+			Where("id IN ? AND quota > 0", topupUserIDs).
+			Find(&users).Error; err != nil {
 			common.SysError("failed to query topup users for business snapshot: " + err.Error())
 			return summary, errors.New("查询业务快照失败")
 		}
+
 		for _, user := range users {
-			effectiveQuota := user.Quota - common.QuotaForNewUser
-			if effectiveQuota <= 0 {
-				continue
-			}
 			summary.TopupUsersWithBalanceCount++
-			summary.TopupBalanceSumAfterSignupGift += int64(effectiveQuota)
+			summary.TopupCurrentBalanceSum += int64(user.Quota)
 		}
-	}
-
-	var subscriptions []UserSubscription
-	if err := DB.Select("user_id", "amount_total", "amount_used").
-		Where("status = ? AND end_time > ? AND amount_total > amount_used AND amount_total > 0", "active", nowUnix).
-		Find(&subscriptions).Error; err != nil {
-		common.SysError("failed to query active subscriptions for business snapshot: " + err.Error())
-		return summary, errors.New("查询业务快照失败")
-	}
-
-	seenSubscriptionUsers := make(map[int]struct{}, len(subscriptions))
-	for _, subscription := range subscriptions {
-		remaining := subscription.AmountTotal - subscription.AmountUsed
-		if remaining <= 0 {
-			continue
-		}
-		summary.SubscriptionRemainingQuotaSum += remaining
-		if _, ok := seenSubscriptionUsers[subscription.UserId]; ok {
-			continue
-		}
-		seenSubscriptionUsers[subscription.UserId] = struct{}{}
-		summary.SubscriptionUsersWithRemainingCnt++
 	}
 
 	return summary, nil

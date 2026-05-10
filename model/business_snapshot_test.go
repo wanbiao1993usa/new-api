@@ -19,11 +19,6 @@ func insertBusinessSnapshotTopUp(t *testing.T, topUp TopUp) {
 	require.NoError(t, DB.Create(&topUp).Error)
 }
 
-func insertBusinessSnapshotSubscription(t *testing.T, subscription UserSubscription) {
-	t.Helper()
-	require.NoError(t, DB.Create(&subscription).Error)
-}
-
 func insertBusinessSnapshotLog(t *testing.T, log Log) {
 	t.Helper()
 	require.NoError(t, LOG_DB.Create(&log).Error)
@@ -32,21 +27,15 @@ func insertBusinessSnapshotLog(t *testing.T, log Log) {
 func TestGetBusinessSnapshotSummariesAndDailyRows(t *testing.T) {
 	truncateTables(t)
 
-	oldQuotaForNewUser := common.QuotaForNewUser
-	common.QuotaForNewUser = 100
-	t.Cleanup(func() {
-		common.QuotaForNewUser = oldQuotaForNewUser
-	})
-
 	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.Local)
 	day1 := time.Date(2026, 5, 8, 10, 0, 0, 0, time.Local).Unix()
 	day2 := time.Date(2026, 5, 9, 10, 0, 0, 0, time.Local).Unix()
 	day3 := time.Date(2026, 5, 10, 10, 0, 0, 0, time.Local).Unix()
 
-	insertBusinessSnapshotUser(t, User{Id: 101, Username: "alice", AffCode: "ba1", Quota: 180, UsedQuota: 40, CreatedAt: day1})
-	insertBusinessSnapshotUser(t, User{Id: 102, Username: "bob", AffCode: "ba2", Quota: 90, UsedQuota: 0, CreatedAt: day2})
-	insertBusinessSnapshotUser(t, User{Id: 103, Username: "carol", AffCode: "ba3", Quota: 300, UsedQuota: 0, CreatedAt: day2})
-	insertBusinessSnapshotUser(t, User{Id: 104, Username: "dave", AffCode: "ba4", Quota: 50, UsedQuota: 10, CreatedAt: day3})
+	insertBusinessSnapshotUser(t, User{Id: 101, Username: "alice", AffCode: "ba1", Quota: 120, CreatedAt: day1})
+	insertBusinessSnapshotUser(t, User{Id: 102, Username: "bob", AffCode: "ba2", Quota: 80, CreatedAt: day2})
+	insertBusinessSnapshotUser(t, User{Id: 103, Username: "carol", AffCode: "ba3", Quota: 10, CreatedAt: day2})
+	insertBusinessSnapshotUser(t, User{Id: 104, Username: "dave", AffCode: "ba4", Quota: 50, CreatedAt: day3})
 
 	insertBusinessSnapshotTopUp(t, TopUp{
 		Id:           1,
@@ -68,37 +57,12 @@ func TestGetBusinessSnapshotSummariesAndDailyRows(t *testing.T) {
 	})
 	insertBusinessSnapshotTopUp(t, TopUp{
 		Id:           3,
-		UserId:       104,
-		Amount:       0,
+		UserId:       103,
+		Amount:       500,
 		Money:        30,
-		TradeNo:      "sub-mirror",
+		TradeNo:      "topup-c",
 		Status:       common.TopUpStatusSuccess,
 		CompleteTime: day3,
-	})
-
-	insertBusinessSnapshotSubscription(t, UserSubscription{
-		Id:          1,
-		UserId:      104,
-		AmountTotal: 1000,
-		AmountUsed:  400,
-		Status:      "active",
-		EndTime:     now.Add(24 * time.Hour).Unix(),
-	})
-	insertBusinessSnapshotSubscription(t, UserSubscription{
-		Id:          2,
-		UserId:      101,
-		AmountTotal: 200,
-		AmountUsed:  200,
-		Status:      "active",
-		EndTime:     now.Add(24 * time.Hour).Unix(),
-	})
-	insertBusinessSnapshotSubscription(t, UserSubscription{
-		Id:          3,
-		UserId:      103,
-		AmountTotal: 0,
-		AmountUsed:  0,
-		Status:      "active",
-		EndTime:     now.Add(24 * time.Hour).Unix(),
 	})
 
 	insertBusinessSnapshotLog(t, Log{
@@ -110,8 +74,15 @@ func TestGetBusinessSnapshotSummariesAndDailyRows(t *testing.T) {
 	})
 	insertBusinessSnapshotLog(t, Log{
 		Id:        2,
-		UserId:    104,
-		Username:  "dave",
+		UserId:    102,
+		Username:  "bob",
+		CreatedAt: day3,
+		Type:      LogTypeConsume,
+	})
+	insertBusinessSnapshotLog(t, Log{
+		Id:        3,
+		UserId:    102,
+		Username:  "bob",
 		CreatedAt: day3,
 		Type:      LogTypeConsume,
 	})
@@ -119,10 +90,9 @@ func TestGetBusinessSnapshotSummariesAndDailyRows(t *testing.T) {
 	result, err := getBusinessSnapshotAt(now, 3)
 	require.NoError(t, err)
 
-	assert.EqualValues(t, 1, result.Summary.TopupUsersWithBalanceCount)
-	assert.EqualValues(t, 80, result.Summary.TopupBalanceSumAfterSignupGift)
-	assert.EqualValues(t, 1, result.Summary.SubscriptionUsersWithRemainingCnt)
-	assert.EqualValues(t, 600, result.Summary.SubscriptionRemainingQuotaSum)
+	assert.EqualValues(t, 3, result.Summary.TopupPaidUsersCount)
+	assert.EqualValues(t, 3, result.Summary.TopupUsersWithBalanceCount)
+	assert.EqualValues(t, 210, result.Summary.TopupCurrentBalanceSum)
 
 	require.Len(t, result.Daily, 3)
 	assert.Equal(t, "2026-05-08", result.Daily[0].Date)
