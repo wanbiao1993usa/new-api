@@ -71,6 +71,26 @@ func TestRedeemBlankTypeDefaultsToQuotaForLegacyCodes(t *testing.T) {
 	assert.Equal(t, 500, result.Quota)
 }
 
+func TestRedeemQuotaCodeTrimsWhitespace(t *testing.T) {
+	truncateTables(t)
+
+	insertRedemptionTestUser(t, 806, "default", 0)
+	require.NoError(t, DB.Create(&Redemption{
+		Key:         "trimmedredemptioncode1234567890abcd",
+		Status:      common.RedemptionCodeStatusEnabled,
+		Type:        RedemptionTypeQuota,
+		Name:        "Whitespace Code",
+		Quota:       120,
+		CreatedTime: common.GetTimestamp(),
+	}).Error)
+
+	result, err := Redeem(" \ntrimmedredemptioncode1234567890abcd\t ", 806)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, RedemptionTypeQuota, result.Type)
+	assert.Equal(t, 120, result.Quota)
+}
+
 func TestRedeemInvalidTypeFailsWithoutConsumingCode(t *testing.T) {
 	truncateTables(t)
 

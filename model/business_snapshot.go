@@ -2,9 +2,13 @@ package model
 
 import (
 	"errors"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
 type BusinessSnapshotSummary struct {
@@ -61,6 +65,11 @@ type businessSnapshotUserQuotaSumRow struct {
 	UserId int   `gorm:"column:user_id"`
 	Quota  int64 `gorm:"column:quota"`
 }
+
+var (
+	businessSnapshotManageSubtractRegexp = regexp.MustCompile(`管理员减少用户额度\s+([^\s]+)\s+额度`)
+	businessSnapshotManageOverrideRegexp = regexp.MustCompile(`管理员覆盖用户额度从\s+([^\s]+)\s+额度\s+为\s+([^\s]+)\s+额度`)
+)
 
 func GetBusinessSnapshot(days int) (BusinessSnapshotResult, error) {
 	return getBusinessSnapshotAt(time.Now(), days)
@@ -274,6 +283,18 @@ func getBusinessSnapshotSummary() (BusinessSnapshotSummary, error) {
 			userWalletConsumed[row.UserId] = row.Quota
 		}
 
+		manageLogs := make([]Log, 0)
+		if err := LOG_DB.Model(&Log{}).
+			Select("user_id", "content", "type").
+			Where("user_id IN ? AND type = ?", userIDs, LogTypeManage).
+			Find(&manageLogs).Error; err != nil {
+			common.SysError("failed to query manage logs for business snapshot: " + err.Error())
+			return summary, errors.New("查询业务快照失败")
+		}
+		for _, log := range manageLogs {
+			userWalletConsumed[log.UserId] += parseBusinessSnapshotManagedQuotaDelta(log.Content)
+		}
+
 		for _, row := range redemptionQuotaRows {
 			redeemed := row.Quota
 			if redeemed <= 0 {
@@ -292,6 +313,75 @@ func getBusinessSnapshotSummary() (BusinessSnapshotSummary, error) {
 	}
 
 	return summary, nil
+}
+
+func parseBusinessSnapshotManagedQuotaDelta(content string) int64 {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return 0
+	}
+
+	if matches := businessSnapshotManageSubtractRegexp.FindStringSubmatch(content); len(matches) == 2 {
+		return parseBusinessSnapshotDisplayQuota(matches[1])
+	}
+
+	if matches := businessSnapshotManageOverrideRegexp.FindStringSubmatch(content); len(matches) == 3 {
+		fromQuota := parseBusinessSnapshotDisplayQuota(matches[1])
+		toQuota := parseBusinessSnapshotDisplayQuota(matches[2])
+		if fromQuota > toQuota {
+			return fromQuota - toQuota
+		}
+	}
+
+	return 0
+}
+
+func parseBusinessSnapshotDisplayQuota(raw string) int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+
+	switch operation_setting.GetQuotaDisplayType() {
+	case operation_setting.QuotaDisplayTypeTokens:
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value < 0 {
+			return 0
+		}
+		return value
+	case operation_setting.QuotaDisplayTypeCNY:
+		raw = strings.TrimPrefix(raw, "¥")
+		value, err := strconv.ParseFloat(raw, 64)
+		if err != nil || value < 0 {
+			return 0
+		}
+		if operation_setting.USDExchangeRate <= 0 {
+			return 0
+		}
+		return int64(value / operation_setting.USDExchangeRate * common.QuotaPerUnit)
+	case operation_setting.QuotaDisplayTypeCustom:
+		symbol := operation_setting.GetGeneralSetting().CustomCurrencySymbol
+		if symbol == "" {
+			symbol = "¤"
+		}
+		raw = strings.TrimPrefix(raw, symbol)
+		value, err := strconv.ParseFloat(raw, 64)
+		if err != nil || value < 0 {
+			return 0
+		}
+		rate := operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
+		if rate <= 0 {
+			rate = 1
+		}
+		return int64(value / rate * common.QuotaPerUnit)
+	default:
+		raw = strings.TrimPrefix(raw, "＄")
+		value, err := strconv.ParseFloat(raw, 64)
+		if err != nil || value < 0 {
+			return 0
+		}
+		return int64(value * common.QuotaPerUnit)
+	}
 }
 
 func GetBusinessSnapshotUsersWithBalance(pageInfo *common.PageInfo) (*common.PageInfo, error) {

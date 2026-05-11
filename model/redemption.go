@@ -142,6 +142,7 @@ func GetRedemptionById(id int) (*Redemption, error) {
 }
 
 func Redeem(key string, userId int) (result *RedemptionResult, err error) {
+	key = strings.TrimSpace(key)
 	if key == "" {
 		return nil, errors.New("未提供兑换码")
 	}

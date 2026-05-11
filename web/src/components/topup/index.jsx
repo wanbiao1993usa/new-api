@@ -168,14 +168,15 @@ const TopUp = () => {
   };
 
   const topUp = async () => {
-    if (redemptionCode === '') {
+    const normalizedRedemptionCode = redemptionCode.trim();
+    if (normalizedRedemptionCode === '') {
       showInfo(t('请输入兑换码！'));
       return;
     }
     setIsSubmitting(true);
     try {
       const res = await API.post('/api/user/topup', {
-        key: redemptionCode,
+        key: normalizedRedemptionCode,
       });
       const { success, message, data } = res.data;
       if (success) {

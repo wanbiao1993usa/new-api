@@ -126,6 +126,22 @@ func TestGetBusinessSnapshotSummariesAndDailyRows(t *testing.T) {
 			"subscription_consumed": 30,
 		}),
 	})
+	insertBusinessSnapshotLog(t, Log{
+		Id:        6,
+		UserId:    105,
+		Username:  "erin",
+		CreatedAt: day1 - 24*3600 + 120,
+		Type:      LogTypeManage,
+		Content:   "管理员减少用户额度 ＄0.000040 额度",
+	})
+	insertBusinessSnapshotLog(t, Log{
+		Id:        7,
+		UserId:    105,
+		Username:  "erin",
+		CreatedAt: day1 - 24*3600 + 180,
+		Type:      LogTypeManage,
+		Content:   "管理员覆盖用户额度从 ＄0.000020 额度 为 ＄0.000010 额度",
+	})
 
 	result, err := getBusinessSnapshotAt(now, 3)
 	require.NoError(t, err)
@@ -134,8 +150,8 @@ func TestGetBusinessSnapshotSummariesAndDailyRows(t *testing.T) {
 	assert.EqualValues(t, 4, result.Summary.TopupUsersWithBalanceCount)
 	assert.EqualValues(t, 230, result.Summary.TopupCurrentBalanceSum)
 	assert.EqualValues(t, 70, result.Summary.RedemptionQuotaRedeemedTotal)
-	assert.EqualValues(t, 50, result.Summary.RedemptionQuotaConsumedTotal)
-	assert.EqualValues(t, 20, result.Summary.RedemptionQuotaRemainingTotal)
+	assert.EqualValues(t, 70, result.Summary.RedemptionQuotaConsumedTotal)
+	assert.EqualValues(t, 0, result.Summary.RedemptionQuotaRemainingTotal)
 
 	require.Len(t, result.Daily, 3)
 	assert.Equal(t, "2026-05-08", result.Daily[0].Date)
