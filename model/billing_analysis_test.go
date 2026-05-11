@@ -1,12 +1,25 @@
 package model
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func insertBillingAnalysisChannel(t *testing.T, id int, name string) {
+	t.Helper()
+	require.NoError(t, DB.Create(&Channel{
+		Id:     id,
+		Type:   1,
+		Key:    fmt.Sprintf("billing-channel-key-%d", id),
+		Status: common.ChannelStatusEnabled,
+		Name:   name,
+		Group:  "default",
+	}).Error)
+}
 
 func insertBillingAnalysisLog(t *testing.T, log Log) {
 	t.Helper()
@@ -15,6 +28,10 @@ func insertBillingAnalysisLog(t *testing.T, log Log) {
 
 func seedBillingAnalysisLedger(t *testing.T) {
 	t.Helper()
+	insertBillingAnalysisChannel(t, 11, "Alpha Channel")
+	insertBillingAnalysisChannel(t, 12, "Beta Channel")
+	insertBillingAnalysisChannel(t, 13, "Gamma Channel")
+	insertBillingAnalysisChannel(t, 14, "Delta Channel")
 	insertBillingAnalysisLog(t, Log{
 		Id:               21,
 		UserId:           301,
@@ -127,6 +144,9 @@ func billingAnalysisRowByKey(rows []BillingAnalysisRow, key string) (BillingAnal
 func TestGetBillingAnalysisSplitsWalletAndSubscription(t *testing.T) {
 	truncateTables(t)
 
+	insertBillingAnalysisChannel(t, 10, "Primary Channel")
+	insertBillingAnalysisChannel(t, 20, "Backup Channel")
+
 	insertBillingAnalysisLog(t, Log{
 		Id:               1,
 		UserId:           101,
@@ -230,6 +250,7 @@ func TestGetBillingAnalysisSplitsWalletAndSubscription(t *testing.T) {
 
 	require.Len(t, result.Channels, 2)
 	assert.Equal(t, "10", result.Channels[0].Key)
+	assert.Equal(t, "Primary Channel(10)", result.Channels[0].Name)
 	assert.EqualValues(t, 2500, result.Channels[0].TotalQuota)
 }
 
@@ -355,6 +376,7 @@ func TestGetBillingAnalysisSeededLedgerAggregatesEveryDimension(t *testing.T) {
 
 	channel11, ok := billingAnalysisRowByKey(result.Channels, "11")
 	require.True(t, ok)
+	assert.Equal(t, "Alpha Channel(11)", channel11.Name)
 	assert.EqualValues(t, 2, channel11.RequestCount)
 	assert.EqualValues(t, 2200, channel11.TotalQuota)
 }

@@ -140,6 +140,7 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 	walletOverviewRows := make(map[string]*BillingAnalysisOverviewItem)
 	subscriptionOverviewRows := make(map[string]*BillingAnalysisOverviewItem)
 	multiplierOverviewRows := make(map[string]*BillingAnalysisOverviewItem)
+	channelIDs := make(map[int]struct{})
 
 	for rows.Next() {
 		var log Log
@@ -174,11 +175,21 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 
 			channelKey := strconv.Itoa(log.ChannelId)
 			addBillingAnalysisRow(channelRows, channelKey, channelKey, 0, log.ChannelId, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
+			if log.ChannelId > 0 {
+				channelIDs[log.ChannelId] = struct{}{}
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {
 		common.SysError("failed to iterate billing analysis logs: " + err.Error())
 		return result, errors.New("查询计费分析数据失败")
+	}
+
+	if includeAdminDimensions && len(channelRows) > 0 {
+		if err := fillBillingAnalysisChannelNames(channelRows, channelIDs); err != nil {
+			common.SysError("failed to query billing analysis channels: " + err.Error())
+			return result, errors.New("查询计费分析数据失败")
+		}
 	}
 
 	fillBillingAnalysisEffectiveQuota(&result.Summary)
@@ -194,6 +205,44 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 	result.Groups = finishBillingAnalysisRows(groupRows)
 
 	return result, nil
+}
+
+func fillBillingAnalysisChannelNames(rows map[string]*BillingAnalysisRow, channelIDs map[int]struct{}) error {
+	if len(rows) == 0 || len(channelIDs) == 0 {
+		return nil
+	}
+
+	ids := make([]int, 0, len(channelIDs))
+	for channelID := range channelIDs {
+		if channelID > 0 {
+			ids = append(ids, channelID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	var channels []struct {
+		Id   int    `gorm:"column:id"`
+		Name string `gorm:"column:name"`
+	}
+	if err := DB.Model(&Channel{}).
+		Select("id", "name").
+		Where("id IN ?", ids).
+		Find(&channels).Error; err != nil {
+		return err
+	}
+
+	channelNames := make(map[int]string, len(channels))
+	for _, channel := range channels {
+		channelNames[channel.Id] = channel.Name
+	}
+	for _, row := range rows {
+		if name := channelNames[row.ChannelId]; name != "" {
+			row.Name = fmt.Sprintf("%s(%d)", name, row.ChannelId)
+		}
+	}
+	return nil
 }
 
 func splitBillingAnalysisQuota(log Log) (walletQuota int64, subscriptionQuota int64) {
