@@ -41,7 +41,7 @@ func TestGetBusinessSnapshotSummariesAndDailyRows(t *testing.T) {
 	insertBusinessSnapshotUser(t, User{Id: 102, Username: "bob", AffCode: "ba2", Quota: 80, CreatedAt: day2})
 	insertBusinessSnapshotUser(t, User{Id: 103, Username: "carol", AffCode: "ba3", Quota: 10, CreatedAt: day2})
 	insertBusinessSnapshotUser(t, User{Id: 104, Username: "dave", AffCode: "ba4", Quota: 50, CreatedAt: day3})
-	insertBusinessSnapshotUser(t, User{Id: 105, Username: "erin", AffCode: "ba5", Quota: 70, CreatedAt: day3})
+	insertBusinessSnapshotUser(t, User{Id: 105, Username: "erin", AffCode: "ba5", Quota: 20, CreatedAt: day3})
 
 	insertBusinessSnapshotTopUp(t, TopUp{
 		Id:           1,
@@ -103,13 +103,39 @@ func TestGetBusinessSnapshotSummariesAndDailyRows(t *testing.T) {
 		CreatedAt: day3,
 		Type:      LogTypeConsume,
 	})
+	insertBusinessSnapshotLog(t, Log{
+		Id:        4,
+		UserId:    105,
+		Username:  "erin",
+		CreatedAt: day1 - 24*3600,
+		Type:      LogTypeConsume,
+		Quota:     50,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source": "wallet",
+		}),
+	})
+	insertBusinessSnapshotLog(t, Log{
+		Id:        5,
+		UserId:    105,
+		Username:  "erin",
+		CreatedAt: day1 - 24*3600 + 60,
+		Type:      LogTypeConsume,
+		Quota:     30,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_source":        "subscription",
+			"subscription_consumed": 30,
+		}),
+	})
 
 	result, err := getBusinessSnapshotAt(now, 3)
 	require.NoError(t, err)
 
 	assert.EqualValues(t, 4, result.Summary.TopupPaidUsersCount)
 	assert.EqualValues(t, 4, result.Summary.TopupUsersWithBalanceCount)
-	assert.EqualValues(t, 280, result.Summary.TopupCurrentBalanceSum)
+	assert.EqualValues(t, 230, result.Summary.TopupCurrentBalanceSum)
+	assert.EqualValues(t, 70, result.Summary.RedemptionQuotaRedeemedTotal)
+	assert.EqualValues(t, 50, result.Summary.RedemptionQuotaConsumedTotal)
+	assert.EqualValues(t, 20, result.Summary.RedemptionQuotaRemainingTotal)
 
 	require.Len(t, result.Daily, 3)
 	assert.Equal(t, "2026-05-08", result.Daily[0].Date)

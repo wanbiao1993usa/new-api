@@ -8,9 +8,12 @@ import (
 )
 
 type BusinessSnapshotSummary struct {
-	TopupPaidUsersCount        int64 `json:"topup_paid_users_count"`
-	TopupUsersWithBalanceCount int64 `json:"topup_users_with_balance_count"`
-	TopupCurrentBalanceSum     int64 `json:"topup_current_balance_sum"`
+	TopupPaidUsersCount          int64 `json:"topup_paid_users_count"`
+	TopupUsersWithBalanceCount   int64 `json:"topup_users_with_balance_count"`
+	TopupCurrentBalanceSum       int64 `json:"topup_current_balance_sum"`
+	RedemptionQuotaRedeemedTotal int64 `json:"redemption_quota_redeemed_total"`
+	RedemptionQuotaConsumedTotal int64 `json:"redemption_quota_consumed_total"`
+	RedemptionQuotaRemainingTotal int64 `json:"redemption_quota_remaining_total"`
 }
 
 type BusinessSnapshotDailyRow struct {
@@ -213,6 +216,78 @@ func getBusinessSnapshotSummary() (BusinessSnapshotSummary, error) {
 		for _, user := range users {
 			summary.TopupUsersWithBalanceCount++
 			summary.TopupCurrentBalanceSum += int64(user.Quota)
+		}
+	}
+
+	var redeemedTotal int64
+	if err := DB.Model(&Redemption{}).
+		Select("COALESCE(SUM(quota), 0)").
+		Where(
+			"status = ? AND type = ?",
+			common.RedemptionCodeStatusUsed,
+			RedemptionTypeQuota,
+		).
+		Scan(&redeemedTotal).Error; err != nil {
+		common.SysError("failed to query redemption quota summary for business snapshot: " + err.Error())
+		return summary, errors.New("查询业务快照失败")
+	}
+	summary.RedemptionQuotaRedeemedTotal = redeemedTotal
+
+	redemptionQuotaRows := make([]businessSnapshotUserQuotaSumRow, 0)
+	if err := DB.Model(&Redemption{}).
+		Select("used_user_id AS user_id, SUM(quota) AS quota").
+		Where(
+			"used_user_id > 0 AND status = ? AND type = ?",
+			common.RedemptionCodeStatusUsed,
+			RedemptionTypeQuota,
+		).
+		Group("used_user_id").
+		Scan(&redemptionQuotaRows).Error; err != nil {
+		common.SysError("failed to query redemption quota by user for business snapshot: " + err.Error())
+		return summary, errors.New("查询业务快照失败")
+	}
+
+	if len(redemptionQuotaRows) > 0 {
+		userWalletConsumed := make(map[int]int64, len(redemptionQuotaRows))
+		userIDs := make([]int, 0, len(redemptionQuotaRows))
+		for _, row := range redemptionQuotaRows {
+			if row.UserId > 0 {
+				userIDs = append(userIDs, row.UserId)
+			}
+		}
+
+		type walletConsumedRow struct {
+			UserId int   `gorm:"column:user_id"`
+			Quota  int64 `gorm:"column:quota"`
+		}
+		consumedRows := make([]walletConsumedRow, 0)
+		if err := LOG_DB.Model(&Log{}).
+			Select("user_id, SUM(quota) AS quota").
+			Where("user_id IN ? AND type = ?", userIDs, LogTypeConsume).
+			Where("other LIKE ? OR other = '' OR other IS NULL", `%"billing_source":"wallet"%`).
+			Group("user_id").
+			Scan(&consumedRows).Error; err != nil {
+			common.SysError("failed to query wallet consumed quota for business snapshot: " + err.Error())
+			return summary, errors.New("查询业务快照失败")
+		}
+		for _, row := range consumedRows {
+			userWalletConsumed[row.UserId] = row.Quota
+		}
+
+		for _, row := range redemptionQuotaRows {
+			redeemed := row.Quota
+			if redeemed <= 0 {
+				continue
+			}
+			consumed := userWalletConsumed[row.UserId]
+			if consumed > redeemed {
+				consumed = redeemed
+			}
+			if consumed < 0 {
+				consumed = 0
+			}
+			summary.RedemptionQuotaConsumedTotal += consumed
+			summary.RedemptionQuotaRemainingTotal += redeemed - consumed
 		}
 	}
 

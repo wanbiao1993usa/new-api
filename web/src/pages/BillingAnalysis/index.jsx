@@ -53,6 +53,7 @@ import {
 import { DATE_RANGE_PRESETS } from '../../constants/console.constants';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import BusinessSnapshotTab from './BusinessSnapshotTab';
+import SubscriptionAnalysisTab from './SubscriptionAnalysisTab';
 
 const { Text, Title } = Typography;
 
@@ -156,6 +157,32 @@ const normalizeAnalysis = (data) => ({
   groups: Array.isArray(data?.groups) ? data.groups : [],
 });
 
+const buildBillingAnalysisParams = (values, fallbackValues, isAdminUser) => {
+  const safeValues = values || fallbackValues;
+  const dateRange = Array.isArray(safeValues?.dateRange)
+    ? safeValues.dateRange
+    : fallbackValues.dateRange;
+  const params = {
+    token_name: safeValues?.token_name || '',
+    model_name: safeValues?.model_name || '',
+    group: safeValues?.group || '',
+  };
+
+  const startTimestamp = toTimestamp(dateRange[0]);
+  const endTimestamp = toTimestamp(dateRange[1]);
+  if (startTimestamp > 0) {
+    params.start_timestamp = startTimestamp;
+  }
+  if (endTimestamp > 0) {
+    params.end_timestamp = endTimestamp;
+  }
+  if (isAdminUser) {
+    params.username = safeValues?.username || '';
+    params.channel = safeValues?.channel || '';
+  }
+  return params;
+};
+
 const StatCard = ({
   icon: Icon,
   label,
@@ -243,41 +270,29 @@ const BillingAnalysis = () => {
     }),
     [],
   );
+  const initialQueryParams = useMemo(
+    () =>
+      buildBillingAnalysisParams(formInitValues, formInitValues, isAdminUser),
+    [formInitValues, isAdminUser],
+  );
+  const [submittedParams, setSubmittedParams] = useState(initialQueryParams);
 
   const buildParams = useCallback(() => {
     const values = formApi?.getValues?.() || formInitValues;
-    const dateRange = Array.isArray(values.dateRange)
-      ? values.dateRange
-      : formInitValues.dateRange;
-    const params = {
-      token_name: values.token_name || '',
-      model_name: values.model_name || '',
-      group: values.group || '',
-    };
-
-    const startTimestamp = toTimestamp(dateRange[0]);
-    const endTimestamp = toTimestamp(dateRange[1]);
-    if (startTimestamp > 0) {
-      params.start_timestamp = startTimestamp;
-    }
-    if (endTimestamp > 0) {
-      params.end_timestamp = endTimestamp;
-    }
-    if (isAdminUser) {
-      params.username = values.username || '';
-      params.channel = values.channel || '';
-    }
-    return params;
+    return buildBillingAnalysisParams(values, formInitValues, isAdminUser);
   }, [formApi, formInitValues, isAdminUser]);
 
   const refresh = useCallback(async () => {
+    if (isAdminUser && adminView !== 'consume') {
+      return;
+    }
     setLoading(true);
     try {
       const endpoint = isAdminUser
         ? '/api/billing/analysis/'
         : '/api/billing/analysis/self';
       const res = await API.get(endpoint, {
-        params: buildParams(),
+        params: submittedParams,
         disableDuplicate: true,
       });
       const { success, message, data } = res.data;
@@ -291,7 +306,7 @@ const BillingAnalysis = () => {
     } finally {
       setLoading(false);
     }
-  }, [buildParams, isAdminUser]);
+  }, [adminView, isAdminUser, submittedParams]);
 
   useEffect(() => {
     refresh();
@@ -302,8 +317,16 @@ const BillingAnalysis = () => {
       formApi.reset();
     }
     setTimeout(() => {
-      refresh();
+      setSubmittedParams(initialQueryParams);
     }, 0);
+  };
+
+  useEffect(() => {
+    setSubmittedParams(initialQueryParams);
+  }, [initialQueryParams]);
+
+  const submitFilters = () => {
+    setSubmittedParams(buildParams());
   };
 
   const summary = analysis.summary;
@@ -524,6 +547,7 @@ const BillingAnalysis = () => {
         >
           <Tabs type='line' activeKey={adminView} onChange={setAdminView}>
             <TabPane tab={t('消费分析')} itemKey='consume' />
+            <TabPane tab={t('订阅分析')} itemKey='subscription' />
             <TabPane tab={t('运营快照')} itemKey='snapshot' />
           </Tabs>
         </Card>
@@ -537,7 +561,7 @@ const BillingAnalysis = () => {
             <Form
               initValues={formInitValues}
               getFormApi={(api) => setFormApi(api)}
-              onSubmit={refresh}
+              onSubmit={submitFilters}
               allowEmpty={true}
               autoComplete='off'
               layout='vertical'
@@ -545,7 +569,13 @@ const BillingAnalysis = () => {
               stopValidateWithError={false}
             >
               <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2'>
-                <div className='lg:col-span-2'>
+                <div
+                  className={
+                    isAdminUser && adminView === 'subscription'
+                      ? 'md:col-span-2 lg:col-span-2'
+                      : 'lg:col-span-2'
+                  }
+                >
                   <Form.DatePicker
                     field='dateRange'
                     className='w-full'
@@ -561,27 +591,31 @@ const BillingAnalysis = () => {
                     }))}
                   />
                 </div>
-                <Form.Input
-                  field='token_name'
-                  placeholder={t('令牌名称')}
-                  showClear
-                  pure
-                  size='small'
-                />
-                <Form.Input
-                  field='model_name'
-                  placeholder={t('模型名称')}
-                  showClear
-                  pure
-                  size='small'
-                />
-                <Form.Input
-                  field='group'
-                  placeholder={t('分组')}
-                  showClear
-                  pure
-                  size='small'
-                />
+                {(!isAdminUser || adminView === 'consume') && (
+                  <>
+                    <Form.Input
+                      field='token_name'
+                      placeholder={t('令牌名称')}
+                      showClear
+                      pure
+                      size='small'
+                    />
+                    <Form.Input
+                      field='model_name'
+                      placeholder={t('模型名称')}
+                      showClear
+                      pure
+                      size='small'
+                    />
+                    <Form.Input
+                      field='group'
+                      placeholder={t('分组')}
+                      showClear
+                      pure
+                      size='small'
+                    />
+                  </>
+                )}
                 {isAdminUser && (
                   <>
                     <Form.Input
@@ -591,13 +625,15 @@ const BillingAnalysis = () => {
                       pure
                       size='small'
                     />
-                    <Form.Input
-                      field='channel'
-                      placeholder={t('渠道 ID')}
-                      showClear
-                      pure
-                      size='small'
-                    />
+                    {adminView === 'consume' && (
+                      <Form.Input
+                        field='channel'
+                        placeholder={t('渠道 ID')}
+                        showClear
+                        pure
+                        size='small'
+                      />
+                    )}
                   </>
                 )}
               </div>
@@ -623,38 +659,42 @@ const BillingAnalysis = () => {
             </Form>
           </Card>
 
-          <Spin spinning={loading}>
-            <div className='grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3'>
-              {statCards.map((card) => (
-                <StatCard key={card.key} {...card} />
-              ))}
-            </div>
-
-            <Card
-              className='!rounded-lg shadow-sm mt-4'
-              bodyStyle={{ padding: 0 }}
-            >
-              <Tabs type='line' className='px-4 pt-2'>
-                {tabs.map((tab) => (
-                  <TabPane
-                    tab={tab.tab}
-                    itemKey={tab.itemKey}
-                    key={tab.itemKey}
-                  >
-                    <Table
-                      columns={columns}
-                      dataSource={tab.data}
-                      rowKey={(record) => `${tab.itemKey}-${record.key}`}
-                      size='small'
-                      pagination={tablePagination}
-                      scroll={{ x: 'max-content' }}
-                      empty={<Empty description={t('搜索无结果')} />}
-                    />
-                  </TabPane>
+          {isAdminUser && adminView === 'subscription' ? (
+            <SubscriptionAnalysisTab params={submittedParams} />
+          ) : (
+            <Spin spinning={loading}>
+              <div className='grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3'>
+                {statCards.map((card) => (
+                  <StatCard key={card.key} {...card} />
                 ))}
-              </Tabs>
-            </Card>
-          </Spin>
+              </div>
+
+              <Card
+                className='!rounded-lg shadow-sm mt-4'
+                bodyStyle={{ padding: 0 }}
+              >
+                <Tabs type='line' className='px-4 pt-2'>
+                  {tabs.map((tab) => (
+                    <TabPane
+                      tab={tab.tab}
+                      itemKey={tab.itemKey}
+                      key={tab.itemKey}
+                    >
+                      <Table
+                        columns={columns}
+                        dataSource={tab.data}
+                        rowKey={(record) => `${tab.itemKey}-${record.key}`}
+                        size='small'
+                        pagination={tablePagination}
+                        scroll={{ x: 'max-content' }}
+                        empty={<Empty description={t('搜索无结果')} />}
+                      />
+                    </TabPane>
+                  ))}
+                </Tabs>
+              </Card>
+            </Spin>
+          )}
         </>
       )}
     </div>
