@@ -254,6 +254,78 @@ func TestGetBillingAnalysisSplitsWalletAndSubscription(t *testing.T) {
 	assert.EqualValues(t, 2500, result.Channels[0].TotalQuota)
 }
 
+func TestGetBillingAnalysisBuildsTokenMetrics(t *testing.T) {
+	truncateTables(t)
+
+	insertBillingAnalysisLog(t, Log{
+		Id:               101,
+		UserId:           201,
+		Username:         "alice",
+		TokenName:        "token-metrics",
+		ModelName:        "claude-sonnet",
+		ChannelId:        10,
+		Group:            "default",
+		CreatedAt:        1000,
+		Type:             LogTypeConsume,
+		Quota:            1000,
+		PromptTokens:     100,
+		CompletionTokens: 50,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"cache_tokens":          20,
+			"cache_creation_tokens": 10,
+		}),
+	})
+	insertBillingAnalysisLog(t, Log{
+		Id:               102,
+		UserId:           201,
+		Username:         "alice",
+		TokenName:        "token-metrics",
+		ModelName:        "claude-sonnet",
+		ChannelId:        10,
+		Group:            "default",
+		CreatedAt:        1100,
+		Type:             LogTypeConsume,
+		Quota:            1200,
+		PromptTokens:     40,
+		CompletionTokens: 60,
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"cache_creation_tokens":    30,
+			"cache_creation_tokens_5m": 15,
+			"cache_creation_tokens_1h": 5,
+		}),
+	})
+
+	result, err := GetBillingAnalysis(BillingAnalysisFilters{}, false)
+	require.NoError(t, err)
+
+	require.Equal(t, int64(2), result.Summary.RequestCount)
+	assert.Equal(t, int64(2200), result.Summary.TotalQuota)
+	assert.Equal(t, int64(150), result.Summary.TokenCount)
+	assert.Equal(t, int64(140), result.Summary.TokenMetrics.PromptTokens)
+	assert.Equal(t, int64(110), result.Summary.TokenMetrics.CompletionTokens)
+	assert.Equal(t, int64(20), result.Summary.TokenMetrics.CacheReadTokens)
+	assert.Equal(t, int64(20), result.Summary.TokenMetrics.CacheWriteTokens)
+	assert.Equal(t, int64(40), result.Summary.TokenMetrics.CacheTokens)
+	assert.Equal(t, int64(290), result.Summary.TokenMetrics.TotalTokensWithCache)
+	assert.InDelta(t, 140.0/290.0, result.Summary.TokenMetrics.PromptShare, 0.000001)
+	assert.InDelta(t, 110.0/290.0, result.Summary.TokenMetrics.CompletionShare, 0.000001)
+	assert.InDelta(t, 40.0/290.0, result.Summary.TokenMetrics.CacheShare, 0.000001)
+	assert.InDelta(t, 70.0, result.Summary.TokenMetrics.AvgPromptTokensPerRequest, 0.000001)
+	assert.InDelta(t, 55.0, result.Summary.TokenMetrics.AvgCompletionTokensPerRequest, 0.000001)
+	assert.InDelta(t, 20.0, result.Summary.TokenMetrics.AvgCacheTokensPerRequest, 0.000001)
+
+	require.Len(t, result.Tokens, 1)
+	tokenRow := result.Tokens[0]
+	assert.Equal(t, int64(140), tokenRow.TokenMetrics.PromptTokens)
+	assert.Equal(t, int64(110), tokenRow.TokenMetrics.CompletionTokens)
+	assert.Equal(t, int64(20), tokenRow.TokenMetrics.CacheReadTokens)
+	assert.Equal(t, int64(20), tokenRow.TokenMetrics.CacheWriteTokens)
+	assert.Equal(t, int64(40), tokenRow.TokenMetrics.CacheTokens)
+	assert.InDelta(t, 70.0, tokenRow.TokenMetrics.AvgPromptTokensPerRequest, 0.000001)
+	assert.InDelta(t, 55.0, tokenRow.TokenMetrics.AvgCompletionTokensPerRequest, 0.000001)
+	assert.InDelta(t, 20.0, tokenRow.TokenMetrics.AvgCacheTokensPerRequest, 0.000001)
+}
+
 func TestGetBillingAnalysisFiltersAndHidesAdminDimensionsForSelf(t *testing.T) {
 	truncateTables(t)
 

@@ -32,6 +32,7 @@ type BillingAnalysisSummary struct {
 	TokenCount                     int64                         `json:"token_count"`
 	RequestCount                   int64                         `json:"request_count"`
 	EffectiveQuotaPer1KTokens      float64                       `json:"effective_quota_per_1k_tokens"`
+	TokenMetrics                   BillingAnalysisTokenMetrics   `json:"token_metrics"`
 }
 
 type BillingAnalysisOverviewItem struct {
@@ -56,6 +57,22 @@ type BillingAnalysisRow struct {
 	RequestCount              int64   `json:"request_count"`
 	EffectiveQuotaPer1KTokens float64 `json:"effective_quota_per_1k_tokens"`
 	LastUsedAt                int64   `json:"last_used_at"`
+	TokenMetrics              BillingAnalysisTokenMetrics `json:"token_metrics"`
+}
+
+type BillingAnalysisTokenMetrics struct {
+	PromptTokens                  int64   `json:"prompt_tokens"`
+	CompletionTokens              int64   `json:"completion_tokens"`
+	CacheReadTokens               int64   `json:"cache_read_tokens"`
+	CacheWriteTokens              int64   `json:"cache_write_tokens"`
+	CacheTokens                   int64   `json:"cache_tokens"`
+	TotalTokensWithCache          int64   `json:"total_tokens_with_cache"`
+	PromptShare                   float64 `json:"prompt_share"`
+	CompletionShare               float64 `json:"completion_share"`
+	CacheShare                    float64 `json:"cache_share"`
+	AvgPromptTokensPerRequest     float64 `json:"avg_prompt_tokens_per_request"`
+	AvgCompletionTokensPerRequest float64 `json:"avg_completion_tokens_per_request"`
+	AvgCacheTokensPerRequest      float64 `json:"avg_cache_tokens_per_request"`
 }
 
 type BillingAnalysisResult struct {
@@ -68,14 +85,18 @@ type BillingAnalysisResult struct {
 }
 
 type billingAnalysisLogOther struct {
-	BillingSource        string   `json:"billing_source"`
-	SubscriptionConsumed int64    `json:"subscription_consumed"`
-	BillingMode          string   `json:"billing_mode"`
-	MatchedTier          string   `json:"matched_tier"`
-	ModelRatio           *float64 `json:"model_ratio"`
-	GroupRatio           *float64 `json:"group_ratio"`
-	UserGroupRatio       *float64 `json:"user_group_ratio"`
-	ModelPrice           *float64 `json:"model_price"`
+	BillingSource         string   `json:"billing_source"`
+	SubscriptionConsumed  int64    `json:"subscription_consumed"`
+	BillingMode           string   `json:"billing_mode"`
+	MatchedTier           string   `json:"matched_tier"`
+	ModelRatio            *float64 `json:"model_ratio"`
+	GroupRatio            *float64 `json:"group_ratio"`
+	UserGroupRatio        *float64 `json:"user_group_ratio"`
+	ModelPrice            *float64 `json:"model_price"`
+	CacheTokens           int      `json:"cache_tokens"`
+	CacheCreationTokens   int      `json:"cache_creation_tokens"`
+	CacheCreationTokens5m int      `json:"cache_creation_tokens_5m"`
+	CacheCreationTokens1h int      `json:"cache_creation_tokens_1h"`
 }
 
 type billingAnalysisOverviewMeta struct {
@@ -150,17 +171,77 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 		}
 		other := parseBillingAnalysisLogOther(log)
 		walletQuota, subscriptionQuota := splitBillingAnalysisQuotaWithOther(log, other)
-		tokenCount := int64(log.PromptTokens + log.CompletionTokens)
+		promptTokens := int64(log.PromptTokens)
+		completionTokens := int64(log.CompletionTokens)
+		cacheReadTokens := int64(other.CacheTokens)
+		cacheWriteTokens := getBillingAnalysisCacheWriteTokens(other)
+		tokenCount := promptTokens + completionTokens
 		totalQuota := walletQuota + subscriptionQuota
 		originalTotalQuota := calculateBillingAnalysisOriginalQuota(
 			totalQuota,
 			getBillingAnalysisOverviewMeta(other).EffectiveRatio,
 		)
 
-		addBillingAnalysisSummary(&result.Summary, totalQuota, originalTotalQuota, walletQuota, subscriptionQuota, tokenCount)
-		addBillingAnalysisRow(tokenRows, log.TokenName, log.TokenName, 0, 0, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
-		addBillingAnalysisRow(modelRows, log.ModelName, log.ModelName, 0, 0, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
-		addBillingAnalysisRow(groupRows, log.Group, log.Group, 0, 0, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
+		addBillingAnalysisSummary(
+			&result.Summary,
+			totalQuota,
+			originalTotalQuota,
+			walletQuota,
+			subscriptionQuota,
+			tokenCount,
+			promptTokens,
+			completionTokens,
+			cacheReadTokens,
+			cacheWriteTokens,
+		)
+		addBillingAnalysisRow(
+			tokenRows,
+			log.TokenName,
+			log.TokenName,
+			0,
+			0,
+			totalQuota,
+			walletQuota,
+			subscriptionQuota,
+			tokenCount,
+			promptTokens,
+			completionTokens,
+			cacheReadTokens,
+			cacheWriteTokens,
+			log.CreatedAt,
+		)
+		addBillingAnalysisRow(
+			modelRows,
+			log.ModelName,
+			log.ModelName,
+			0,
+			0,
+			totalQuota,
+			walletQuota,
+			subscriptionQuota,
+			tokenCount,
+			promptTokens,
+			completionTokens,
+			cacheReadTokens,
+			cacheWriteTokens,
+			log.CreatedAt,
+		)
+		addBillingAnalysisRow(
+			groupRows,
+			log.Group,
+			log.Group,
+			0,
+			0,
+			totalQuota,
+			walletQuota,
+			subscriptionQuota,
+			tokenCount,
+			promptTokens,
+			completionTokens,
+			cacheReadTokens,
+			cacheWriteTokens,
+			log.CreatedAt,
+		)
 		addBillingAnalysisOverviewItem(walletOverviewRows, other, walletQuota)
 		addBillingAnalysisOverviewItem(subscriptionOverviewRows, other, subscriptionQuota)
 		addBillingAnalysisUsageOverviewItem(multiplierOverviewRows, other, totalQuota, tokenCount)
@@ -171,10 +252,40 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 			if userName == "" {
 				userName = userKey
 			}
-			addBillingAnalysisRow(userRows, userKey, userName, log.UserId, 0, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
+			addBillingAnalysisRow(
+				userRows,
+				userKey,
+				userName,
+				log.UserId,
+				0,
+				totalQuota,
+				walletQuota,
+				subscriptionQuota,
+				tokenCount,
+				promptTokens,
+				completionTokens,
+				cacheReadTokens,
+				cacheWriteTokens,
+				log.CreatedAt,
+			)
 
 			channelKey := strconv.Itoa(log.ChannelId)
-			addBillingAnalysisRow(channelRows, channelKey, channelKey, 0, log.ChannelId, totalQuota, walletQuota, subscriptionQuota, tokenCount, log.CreatedAt)
+			addBillingAnalysisRow(
+				channelRows,
+				channelKey,
+				channelKey,
+				0,
+				log.ChannelId,
+				totalQuota,
+				walletQuota,
+				subscriptionQuota,
+				tokenCount,
+				promptTokens,
+				completionTokens,
+				cacheReadTokens,
+				cacheWriteTokens,
+				log.CreatedAt,
+			)
 			if log.ChannelId > 0 {
 				channelIDs[log.ChannelId] = struct{}{}
 			}
@@ -193,6 +304,7 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 	}
 
 	fillBillingAnalysisEffectiveQuota(&result.Summary)
+	fillBillingAnalysisTokenMetrics(&result.Summary.TokenMetrics, result.Summary.RequestCount)
 	result.Summary.WalletMultiplierOverview = finishBillingAnalysisOverviewItems(walletOverviewRows)
 	result.Summary.SubscriptionMultiplierOverview = finishBillingAnalysisOverviewItems(subscriptionOverviewRows)
 	result.Summary.MultiplierOverview = finishBillingAnalysisOverviewItems(multiplierOverviewRows)
@@ -258,6 +370,13 @@ func parseBillingAnalysisLogOther(log Log) billingAnalysisLogOther {
 	return other
 }
 
+func getBillingAnalysisCacheWriteTokens(other billingAnalysisLogOther) int64 {
+	if other.CacheCreationTokens5m > 0 || other.CacheCreationTokens1h > 0 {
+		return int64(other.CacheCreationTokens5m + other.CacheCreationTokens1h)
+	}
+	return int64(other.CacheCreationTokens)
+}
+
 func splitBillingAnalysisQuotaWithOther(log Log, other billingAnalysisLogOther) (walletQuota int64, subscriptionQuota int64) {
 	if other.BillingSource == "subscription" {
 		subscriptionQuota = other.SubscriptionConsumed
@@ -310,16 +429,49 @@ func calculateBillingAnalysisOriginalQuota(quota int64, effectiveRatio float64) 
 	return float64(quota) / effectiveRatio
 }
 
-func addBillingAnalysisSummary(summary *BillingAnalysisSummary, totalQuota int64, originalTotalQuota float64, walletQuota int64, subscriptionQuota int64, tokenCount int64) {
+func addBillingAnalysisSummary(
+	summary *BillingAnalysisSummary,
+	totalQuota int64,
+	originalTotalQuota float64,
+	walletQuota int64,
+	subscriptionQuota int64,
+	tokenCount int64,
+	promptTokens int64,
+	completionTokens int64,
+	cacheReadTokens int64,
+	cacheWriteTokens int64,
+) {
 	summary.TotalQuota += totalQuota
 	summary.OriginalTotalQuota += originalTotalQuota
 	summary.WalletQuota += walletQuota
 	summary.SubscriptionQuota += subscriptionQuota
 	summary.TokenCount += tokenCount
 	summary.RequestCount += 1
+	addBillingAnalysisTokenMetrics(
+		&summary.TokenMetrics,
+		promptTokens,
+		completionTokens,
+		cacheReadTokens,
+		cacheWriteTokens,
+	)
 }
 
-func addBillingAnalysisRow(rows map[string]*BillingAnalysisRow, key string, name string, userId int, channelId int, totalQuota int64, walletQuota int64, subscriptionQuota int64, tokenCount int64, lastUsedAt int64) {
+func addBillingAnalysisRow(
+	rows map[string]*BillingAnalysisRow,
+	key string,
+	name string,
+	userId int,
+	channelId int,
+	totalQuota int64,
+	walletQuota int64,
+	subscriptionQuota int64,
+	tokenCount int64,
+	promptTokens int64,
+	completionTokens int64,
+	cacheReadTokens int64,
+	cacheWriteTokens int64,
+	lastUsedAt int64,
+) {
 	if key == "" {
 		key = "-"
 	}
@@ -341,15 +493,38 @@ func addBillingAnalysisRow(rows map[string]*BillingAnalysisRow, key string, name
 	row.SubscriptionQuota += subscriptionQuota
 	row.TokenCount += tokenCount
 	row.RequestCount += 1
+	addBillingAnalysisTokenMetrics(
+		&row.TokenMetrics,
+		promptTokens,
+		completionTokens,
+		cacheReadTokens,
+		cacheWriteTokens,
+	)
 	if lastUsedAt > row.LastUsedAt {
 		row.LastUsedAt = lastUsedAt
 	}
+}
+
+func addBillingAnalysisTokenMetrics(
+	metrics *BillingAnalysisTokenMetrics,
+	promptTokens int64,
+	completionTokens int64,
+	cacheReadTokens int64,
+	cacheWriteTokens int64,
+) {
+	metrics.PromptTokens += promptTokens
+	metrics.CompletionTokens += completionTokens
+	metrics.CacheReadTokens += cacheReadTokens
+	metrics.CacheWriteTokens += cacheWriteTokens
+	metrics.CacheTokens = metrics.CacheReadTokens + metrics.CacheWriteTokens
+	metrics.TotalTokensWithCache = metrics.PromptTokens + metrics.CompletionTokens + metrics.CacheTokens
 }
 
 func finishBillingAnalysisRows(rowMap map[string]*BillingAnalysisRow) []BillingAnalysisRow {
 	rows := make([]BillingAnalysisRow, 0, len(rowMap))
 	for _, row := range rowMap {
 		fillBillingAnalysisEffectiveQuota(row)
+		fillBillingAnalysisTokenMetrics(&row.TokenMetrics, row.RequestCount)
 		rows = append(rows, *row)
 	}
 	sort.Slice(rows, func(i, j int) bool {
@@ -473,5 +648,25 @@ func fillBillingAnalysisEffectiveQuota(target interface{}) {
 		if v.TokenCount > 0 {
 			v.EffectiveQuotaPer1KTokens = float64(v.Quota) * quotaPerMillionTokens / float64(v.TokenCount)
 		}
+	}
+}
+
+func fillBillingAnalysisTokenMetrics(metrics *BillingAnalysisTokenMetrics, requestCount int64) {
+	if metrics == nil {
+		return
+	}
+	metrics.CacheTokens = metrics.CacheReadTokens + metrics.CacheWriteTokens
+	metrics.TotalTokensWithCache = metrics.PromptTokens + metrics.CompletionTokens + metrics.CacheTokens
+	if metrics.TotalTokensWithCache > 0 {
+		total := float64(metrics.TotalTokensWithCache)
+		metrics.PromptShare = float64(metrics.PromptTokens) / total
+		metrics.CompletionShare = float64(metrics.CompletionTokens) / total
+		metrics.CacheShare = float64(metrics.CacheTokens) / total
+	}
+	if requestCount > 0 {
+		divisor := float64(requestCount)
+		metrics.AvgPromptTokensPerRequest = float64(metrics.PromptTokens) / divisor
+		metrics.AvgCompletionTokensPerRequest = float64(metrics.CompletionTokens) / divisor
+		metrics.AvgCacheTokensPerRequest = float64(metrics.CacheTokens) / divisor
 	}
 }

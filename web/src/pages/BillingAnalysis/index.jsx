@@ -57,6 +57,21 @@ import SubscriptionAnalysisTab from './SubscriptionAnalysisTab';
 
 const { Text, Title } = Typography;
 
+const emptyTokenMetrics = {
+  prompt_tokens: 0,
+  completion_tokens: 0,
+  cache_read_tokens: 0,
+  cache_write_tokens: 0,
+  cache_tokens: 0,
+  total_tokens_with_cache: 0,
+  prompt_share: 0,
+  completion_share: 0,
+  cache_share: 0,
+  avg_prompt_tokens_per_request: 0,
+  avg_completion_tokens_per_request: 0,
+  avg_cache_tokens_per_request: 0,
+};
+
 const emptySummary = {
   total_quota: 0,
   original_total_quota: 0,
@@ -68,6 +83,7 @@ const emptySummary = {
   token_count: 0,
   request_count: 0,
   effective_quota_per_1k_tokens: 0,
+  token_metrics: emptyTokenMetrics,
 };
 
 const emptyAnalysis = {
@@ -149,6 +165,10 @@ const normalizeAnalysis = (data) => ({
     multiplier_overview: Array.isArray(data?.summary?.multiplier_overview)
       ? data.summary.multiplier_overview
       : [],
+    token_metrics: {
+      ...emptyTokenMetrics,
+      ...(data?.summary?.token_metrics || {}),
+    },
   },
   users: Array.isArray(data?.users) ? data.users : [],
   tokens: Array.isArray(data?.tokens) ? data.tokens : [],
@@ -156,6 +176,31 @@ const normalizeAnalysis = (data) => ({
   channels: Array.isArray(data?.channels) ? data.channels : [],
   groups: Array.isArray(data?.groups) ? data.groups : [],
 });
+
+const formatPercent = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) {
+    return '0%';
+  }
+  const percent = num * 100;
+  const digits = percent >= 10 ? 1 : 2;
+  return `${percent
+    .toFixed(digits)
+    .replace(/\.0+$/, '')
+    .replace(/(\.\d*[1-9])0+$/, '$1')}%`;
+};
+
+const formatAverageTokenValue = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return '0';
+  }
+  const digits = Number.isInteger(num) || Math.abs(num) >= 100 ? 0 : 1;
+  return new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  }).format(num);
+};
 
 const buildBillingAnalysisParams = (values, fallbackValues, isAdminUser) => {
   const safeValues = values || fallbackValues;
@@ -330,6 +375,7 @@ const BillingAnalysis = () => {
   };
 
   const summary = analysis.summary;
+  const tokenMetrics = summary.token_metrics || emptyTokenMetrics;
   const buildOverviewDetails = (items) =>
     (Array.isArray(items) ? items : []).slice(0, 3).map((item) => ({
       label: compactBillingOverviewLabel(item?.label || '-'),
@@ -355,6 +401,52 @@ const BillingAnalysis = () => {
         value: valueFormatter(valueGetter(item) || 0, item),
         extra: extraGetter?.(item) || '',
       }));
+  const buildTokenBreakdownDetails = (metrics) => {
+    if (!metrics || (metrics.total_tokens_with_cache || 0) <= 0) {
+      return [];
+    }
+    return [
+      {
+        label: t('输入'),
+        value: renderNumber(metrics.prompt_tokens || 0),
+        extra: `${t('占比')} ${formatPercent(metrics.prompt_share)}`,
+      },
+      {
+        label: t('输出'),
+        value: renderNumber(metrics.completion_tokens || 0),
+        extra: `${t('占比')} ${formatPercent(metrics.completion_share)}`,
+      },
+      {
+        label: t('缓存'),
+        value: renderNumber(metrics.cache_tokens || 0),
+        extra: `${t('读')} ${renderNumber(metrics.cache_read_tokens || 0)} · ${t('写')} ${renderNumber(metrics.cache_write_tokens || 0)} · ${t('占比')} ${formatPercent(metrics.cache_share)}`,
+      },
+    ];
+  };
+  const buildAverageTokenDetails = (metrics, requestCount) => {
+    if (!metrics || requestCount <= 0) {
+      return [];
+    }
+    return [
+      {
+        label: t('平均输入'),
+        value: formatAverageTokenValue(metrics.avg_prompt_tokens_per_request),
+        extra: `${t('占比')} ${formatPercent(metrics.prompt_share)}`,
+      },
+      {
+        label: t('平均输出'),
+        value: formatAverageTokenValue(
+          metrics.avg_completion_tokens_per_request,
+        ),
+        extra: `${t('占比')} ${formatPercent(metrics.completion_share)}`,
+      },
+      {
+        label: t('平均缓存'),
+        value: formatAverageTokenValue(metrics.avg_cache_tokens_per_request),
+        extra: `${t('占比')} ${formatPercent(metrics.cache_share)}`,
+      },
+    ];
+  };
   const multiplierOverview = summary.multiplier_overview || [];
   const statCards = [
     {
@@ -394,14 +486,8 @@ const BillingAnalysis = () => {
       value: renderNumber(summary.token_count || 0),
       icon: Hash,
       accentClassName: 'bg-amber-100 text-amber-700',
-      detailsTitle: t('倍率'),
-      details: buildMetricOverviewDetails(
-        multiplierOverview,
-        (item) => item?.token_count || 0,
-        (value) => renderNumber(value),
-        (item) =>
-          `${t('消费日志数')} ${renderNumber(item?.request_count || 0)}`,
-      ),
+      detailsTitle: t('结构（含缓存）'),
+      details: buildTokenBreakdownDetails(tokenMetrics),
     },
     {
       key: 'requests',
@@ -409,12 +495,10 @@ const BillingAnalysis = () => {
       value: renderNumber(summary.request_count || 0),
       icon: ListChecks,
       accentClassName: 'bg-rose-100 text-rose-700',
-      detailsTitle: t('倍率'),
-      details: buildMetricOverviewDetails(
-        multiplierOverview,
-        (item) => item?.request_count || 0,
-        (value) => renderNumber(value),
-        (item) => `${t('日志 Tokens')} ${renderNumber(item?.token_count || 0)}`,
+      detailsTitle: t('单次平均'),
+      details: buildAverageTokenDetails(
+        tokenMetrics,
+        summary.request_count || 0,
       ),
     },
     {
