@@ -15,10 +15,30 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/sjson"
 )
+
+func patchResponsesPassThroughModelForCompact(info *relaycommon.RelayInfo, data []byte) ([]byte, error) {
+	if info == nil || info.RelayMode != relayconstant.RelayModeResponsesCompact {
+		return data, nil
+	}
+
+	modelName := strings.TrimSpace(info.UpstreamModelName)
+	if modelName == "" {
+		if baseModelName, ok := ratio_setting.CompactBaseModelName(info.OriginModelName); ok {
+			modelName = baseModelName
+		}
+	}
+	if modelName == "" {
+		return data, nil
+	}
+
+	return sjson.SetBytes(data, "model", modelName)
+}
 
 func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
@@ -76,7 +96,15 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
 		}
-		requestBody = common.ReaderOnly(storage)
+		jsonData, err := storage.Bytes()
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
+		}
+		jsonData, err = patchResponsesPassThroughModelForCompact(info, jsonData)
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+		requestBody = bytes.NewBuffer(jsonData)
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
 		if err != nil {
