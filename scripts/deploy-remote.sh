@@ -12,7 +12,7 @@ REMOTE_IMAGE_ARCHIVE="${REMOTE_IMAGE_ARCHIVE:-/root/new-api-image.tar.gz}"
 REMOTE_COMPOSE_SERVICE="${REMOTE_COMPOSE_SERVICE:-new-api}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3000/api/status}"
 LOCAL_IMAGE_ARCHIVE="${LOCAL_IMAGE_ARCHIVE:-}"
-SSH_CONTROL_PERSIST="${SSH_CONTROL_PERSIST:-10m}"
+SSH_CONTROL_PERSIST="${SSH_CONTROL_PERSIST:-30m}"
 HEALTHCHECK_MAX_ATTEMPTS="${HEALTHCHECK_MAX_ATTEMPTS:-30}"
 HEALTHCHECK_INTERVAL_SECONDS="${HEALTHCHECK_INTERVAL_SECONDS:-2}"
 REMOTE_LOG_TAIL_LINES="${REMOTE_LOG_TAIL_LINES:-100}"
@@ -30,6 +30,9 @@ fi
 SSH_CONNECTION_DIR=""
 SSH_CONTROL_PATH=""
 SSH_CONNECTION_ACTIVE=false
+CLEANUP_REMOTE_HOST=""
+CLEANUP_LOCAL_IMAGE_ARCHIVE=""
+CLEANUP_LOCAL_IMAGE_ENABLED=false
 
 log() {
   printf '[deploy-remote] %s\n' "$*"
@@ -83,6 +86,9 @@ setup_ssh_connection_sharing() {
 cleanup_ssh_connection_sharing() {
   local host="$1"
 
+  if [[ -z "$host" ]]; then
+    return
+  fi
   if [[ "$SSH_CONNECTION_ACTIVE" == "true" ]]; then
     ssh "${SSH_ARGS[@]}" -O exit "$host" >/dev/null 2>&1 || true
     SSH_CONNECTION_ACTIVE=false
@@ -124,7 +130,7 @@ wait_for_remote_healthcheck() {
   local attempt
 
   for attempt in $(seq 1 "$HEALTHCHECK_MAX_ATTEMPTS"); do
-    if ssh "${SSH_ARGS[@]}" "$host" "curl -fsS '$HEALTHCHECK_URL' >/dev/null"; then
+    if ssh "${SSH_ARGS[@]}" "$host" "curl -fsS '$HEALTHCHECK_URL' >/dev/null" >/dev/null 2>&1; then
       return 0
     fi
     if [[ "$attempt" -lt "$HEALTHCHECK_MAX_ATTEMPTS" ]]; then
@@ -132,6 +138,13 @@ wait_for_remote_healthcheck() {
     fi
   done
   return 1
+}
+
+cleanup() {
+  cleanup_ssh_connection_sharing "$CLEANUP_REMOTE_HOST"
+  if [[ "$CLEANUP_LOCAL_IMAGE_ENABLED" == "true" && -n "$CLEANUP_LOCAL_IMAGE_ARCHIVE" ]]; then
+    rm -f "$CLEANUP_LOCAL_IMAGE_ARCHIVE"
+  fi
 }
 
 deploy_remote() {
@@ -153,12 +166,9 @@ deploy_remote() {
   require_cmd ssh
   require_cmd scp
 
-  cleanup() {
-    cleanup_ssh_connection_sharing "$host"
-    if [[ "$cleanup_local_archive" == "true" ]]; then
-      rm -f "$local_image_archive"
-    fi
-  }
+  CLEANUP_REMOTE_HOST="$host"
+  CLEANUP_LOCAL_IMAGE_ARCHIVE="$local_image_archive"
+  CLEANUP_LOCAL_IMAGE_ENABLED="$cleanup_local_archive"
   trap cleanup EXIT
 
   if [[ -z "$LOCAL_IMAGE_ARCHIVE" ]]; then
@@ -204,7 +214,7 @@ Optional env vars:
   TARGET_USER=root
   SSH_PORT=22
   SSH_KEY=/path/to/key.pem
-  SSH_CONTROL_PERSIST=10m
+  SSH_CONTROL_PERSIST=30m
   HEALTHCHECK_MAX_ATTEMPTS=30
   HEALTHCHECK_INTERVAL_SECONDS=2
   REMOTE_LOG_TAIL_LINES=100

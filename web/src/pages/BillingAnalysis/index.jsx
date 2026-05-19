@@ -407,7 +407,7 @@ const BillingAnalysis = () => {
     }
     return [
       {
-        label: t('输入'),
+        label: t('输入（不含缓存）'),
         value: renderNumber(metrics.prompt_tokens || 0),
         extra: `${t('占比')} ${formatPercent(metrics.prompt_share)}`,
       },
