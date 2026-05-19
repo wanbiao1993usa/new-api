@@ -328,6 +328,9 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if types.IsSkipRetryError(openaiErr) {
 		return false
 	}
+	if isUpstreamInsufficientQuotaError(openaiErr) {
+		return retryTimes > 0
+	}
 	if retryTimes <= 0 {
 		return false
 	}
@@ -345,6 +348,33 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 		return false
 	}
 	return operation_setting.ShouldRetryByStatusCode(code)
+}
+
+func isUpstreamInsufficientQuotaError(err *types.NewAPIError) bool {
+	if err == nil || err.StatusCode != http.StatusForbidden {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	if message == "" {
+		return false
+	}
+	keywords := []string{
+		"用户额度不足",
+		"剩余额度",
+		"余额不足",
+		"insufficient_user_quota",
+		"insufficient quota",
+		"quota insufficient",
+		"insufficient balance",
+		"balance insufficient",
+		"remaining quota",
+	}
+	for _, keyword := range keywords {
+		if strings.Contains(message, strings.ToLower(keyword)) {
+			return true
+		}
+	}
+	return false
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
