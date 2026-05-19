@@ -93,10 +93,12 @@ type billingAnalysisLogOther struct {
 	GroupRatio            *float64 `json:"group_ratio"`
 	UserGroupRatio        *float64 `json:"user_group_ratio"`
 	ModelPrice            *float64 `json:"model_price"`
+	InputTokensTotal      int      `json:"input_tokens_total"`
 	CacheTokens           int      `json:"cache_tokens"`
 	CacheCreationTokens   int      `json:"cache_creation_tokens"`
 	CacheCreationTokens5m int      `json:"cache_creation_tokens_5m"`
 	CacheCreationTokens1h int      `json:"cache_creation_tokens_1h"`
+	Claude                bool     `json:"claude"`
 }
 
 type billingAnalysisOverviewMeta struct {
@@ -171,11 +173,17 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 		}
 		other := parseBillingAnalysisLogOther(log)
 		walletQuota, subscriptionQuota := splitBillingAnalysisQuotaWithOther(log, other)
-		promptTokens := int64(log.PromptTokens)
+		rawPromptTokens := int64(log.PromptTokens)
 		completionTokens := int64(log.CompletionTokens)
 		cacheReadTokens := int64(other.CacheTokens)
 		cacheWriteTokens := getBillingAnalysisCacheWriteTokens(other)
-		tokenCount := promptTokens + completionTokens
+		promptTokens, tokenCount := normalizeBillingAnalysisPromptAndTokenCount(
+			rawPromptTokens,
+			completionTokens,
+			cacheReadTokens,
+			cacheWriteTokens,
+			other,
+		)
 		totalQuota := walletQuota + subscriptionQuota
 		originalTotalQuota := calculateBillingAnalysisOriginalQuota(
 			totalQuota,
@@ -375,6 +383,29 @@ func getBillingAnalysisCacheWriteTokens(other billingAnalysisLogOther) int64 {
 		return int64(other.CacheCreationTokens5m + other.CacheCreationTokens1h)
 	}
 	return int64(other.CacheCreationTokens)
+}
+
+func normalizeBillingAnalysisPromptAndTokenCount(
+	promptTokens int64,
+	completionTokens int64,
+	cacheReadTokens int64,
+	cacheWriteTokens int64,
+	other billingAnalysisLogOther,
+) (normalizedPromptTokens int64, tokenCount int64) {
+	switch {
+	case other.InputTokensTotal > 0:
+		totalInputTokens := int64(other.InputTokensTotal)
+		normalizedPromptTokens = totalInputTokens - cacheReadTokens - cacheWriteTokens
+		if normalizedPromptTokens < 0 {
+			normalizedPromptTokens = 0
+		}
+		return normalizedPromptTokens, totalInputTokens + completionTokens
+	case other.Claude:
+		totalInputTokens := promptTokens + cacheReadTokens + cacheWriteTokens
+		return promptTokens, totalInputTokens + completionTokens
+	default:
+		return promptTokens, promptTokens + completionTokens
+	}
 }
 
 func splitBillingAnalysisQuotaWithOther(log Log, other billingAnalysisLogOther) (walletQuota int64, subscriptionQuota int64) {
