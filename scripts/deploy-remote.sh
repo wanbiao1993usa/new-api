@@ -13,6 +13,10 @@ REMOTE_COMPOSE_SERVICE="${REMOTE_COMPOSE_SERVICE:-new-api}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3000/api/status}"
 LOCAL_IMAGE_ARCHIVE="${LOCAL_IMAGE_ARCHIVE:-}"
 SSH_CONTROL_PERSIST="${SSH_CONTROL_PERSIST:-10m}"
+HEALTHCHECK_MAX_ATTEMPTS="${HEALTHCHECK_MAX_ATTEMPTS:-30}"
+HEALTHCHECK_INTERVAL_SECONDS="${HEALTHCHECK_INTERVAL_SECONDS:-2}"
+REMOTE_LOG_TAIL_LINES="${REMOTE_LOG_TAIL_LINES:-100}"
+STALE_LOCAL_IMAGE_MAX_AGE_DAYS="${STALE_LOCAL_IMAGE_MAX_AGE_DAYS:-1}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 
@@ -107,7 +111,27 @@ make_temp_image_archive_path() {
 }
 
 cleanup_stale_temp_image_archives() {
-  find /tmp -maxdepth 1 -type f -name 'new-api-image*.tar.gz' -delete 2>/dev/null || true
+  find /tmp -maxdepth 1 -type f -name 'new-api-image*.tar.gz' -mtime +"$STALE_LOCAL_IMAGE_MAX_AGE_DAYS" -delete 2>/dev/null || true
+}
+
+print_remote_service_logs() {
+  local host="$1"
+  ssh "${SSH_ARGS[@]}" "$host" "cd '$TARGET_DEPLOY_DIR' && docker compose logs --tail='$REMOTE_LOG_TAIL_LINES' '$REMOTE_COMPOSE_SERVICE'" || true
+}
+
+wait_for_remote_healthcheck() {
+  local host="$1"
+  local attempt
+
+  for attempt in $(seq 1 "$HEALTHCHECK_MAX_ATTEMPTS"); do
+    if ssh "${SSH_ARGS[@]}" "$host" "curl -fsS '$HEALTHCHECK_URL' >/dev/null"; then
+      return 0
+    fi
+    if [[ "$attempt" -lt "$HEALTHCHECK_MAX_ATTEMPTS" ]]; then
+      sleep "$HEALTHCHECK_INTERVAL_SECONDS"
+    fi
+  done
+  return 1
 }
 
 deploy_remote() {
@@ -138,17 +162,17 @@ deploy_remote() {
   trap cleanup EXIT
 
   if [[ -z "$LOCAL_IMAGE_ARCHIVE" ]]; then
-    log "cleaning stale local image archives in /tmp"
+    log "cleaning stale local image archives in /tmp older than $STALE_LOCAL_IMAGE_MAX_AGE_DAYS day(s)"
     cleanup_stale_temp_image_archives
   fi
-
-  log "building image archive"
-  build_image_archive "$local_image_archive"
 
   setup_ssh_connection_sharing "$host"
 
   log "checking remote prerequisites on $host"
-  remote_preflight "$host" || die "remote host is missing docker/gzip or SSH access failed"
+  remote_preflight "$host" || die "remote host is missing docker/gzip/curl or SSH access failed"
+
+  log "building image archive"
+  build_image_archive "$local_image_archive"
 
   log "uploading image archive to $host"
   scp "${SCP_ARGS[@]}" "$local_image_archive" "$host:$REMOTE_IMAGE_ARCHIVE"
@@ -160,7 +184,11 @@ deploy_remote() {
   ssh "${SSH_ARGS[@]}" "$host" "cd '$remote_dir' && docker compose up -d --no-deps --force-recreate '$REMOTE_COMPOSE_SERVICE'"
 
   log "verifying remote service"
-  ssh "${SSH_ARGS[@]}" "$host" "curl -fsS '$HEALTHCHECK_URL' >/dev/null"
+  if ! wait_for_remote_healthcheck "$host"; then
+    log "healthcheck failed; remote service logs:"
+    print_remote_service_logs "$host"
+    die "remote healthcheck failed: $HEALTHCHECK_URL"
+  fi
 
   log "remote deploy completed"
 }
@@ -177,6 +205,10 @@ Optional env vars:
   SSH_PORT=22
   SSH_KEY=/path/to/key.pem
   SSH_CONTROL_PERSIST=10m
+  HEALTHCHECK_MAX_ATTEMPTS=30
+  HEALTHCHECK_INTERVAL_SECONDS=2
+  REMOTE_LOG_TAIL_LINES=100
+  STALE_LOCAL_IMAGE_MAX_AGE_DAYS=1
   TARGET_DEPLOY_DIR=/root/new-api
   REMOTE_IMAGE_ARCHIVE=/root/new-api-image.tar.gz
   REMOTE_COMPOSE_SERVICE=new-api
