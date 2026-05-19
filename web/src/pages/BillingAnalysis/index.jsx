@@ -58,15 +58,18 @@ import SubscriptionAnalysisTab from './SubscriptionAnalysisTab';
 const { Text, Title } = Typography;
 
 const emptyTokenMetrics = {
+  input_tokens: 0,
   prompt_tokens: 0,
   completion_tokens: 0,
   cache_read_tokens: 0,
   cache_write_tokens: 0,
   cache_tokens: 0,
   total_tokens_with_cache: 0,
+  input_share: 0,
   prompt_share: 0,
   completion_share: 0,
   cache_share: 0,
+  avg_input_tokens_per_request: 0,
   avg_prompt_tokens_per_request: 0,
   avg_completion_tokens_per_request: 0,
   avg_cache_tokens_per_request: 0,
@@ -401,49 +404,55 @@ const BillingAnalysis = () => {
         value: valueFormatter(valueGetter(item) || 0, item),
         extra: extraGetter?.(item) || '',
       }));
-  const buildTokenBreakdownDetails = (metrics) => {
-    if (!metrics || (metrics.total_tokens_with_cache || 0) <= 0) {
+  const buildTokenBreakdownDetails = (metrics, totalTokenCount) => {
+    const totalTokens = Number(totalTokenCount || 0);
+    const completionTokens = Number(metrics?.completion_tokens || 0);
+    const inputTokens = Number(metrics?.input_tokens || 0);
+    const cacheTokens = Number(metrics?.cache_tokens || 0);
+    if (!metrics || totalTokens <= 0) {
       return [];
     }
     return [
       {
-        label: t('输入（不含缓存）'),
-        value: renderNumber(metrics.prompt_tokens || 0),
-        extra: `${t('占比')} ${formatPercent(metrics.prompt_share)}`,
+        label: t('输入'),
+        value: renderNumber(inputTokens),
+        extra: `${t('占比')} ${formatPercent(metrics.input_share)}`,
       },
       {
         label: t('输出'),
-        value: renderNumber(metrics.completion_tokens || 0),
-        extra: `${t('占比')} ${formatPercent(metrics.completion_share)}`,
+        value: renderNumber(completionTokens),
+        extra: `${t('占比')} ${formatPercent(completionTokens / totalTokens)}`,
       },
       {
         label: t('缓存'),
-        value: renderNumber(metrics.cache_tokens || 0),
-        extra: `${t('读')} ${renderNumber(metrics.cache_read_tokens || 0)} · ${t('写')} ${renderNumber(metrics.cache_write_tokens || 0)} · ${t('占比')} ${formatPercent(metrics.cache_share)}`,
+        value: renderNumber(cacheTokens),
+        extra: `${t('读')} ${renderNumber(metrics.cache_read_tokens || 0)} · ${t('写')} ${renderNumber(metrics.cache_write_tokens || 0)} · ${t('占输入')} ${formatPercent(inputTokens > 0 ? cacheTokens / inputTokens : 0)}`,
       },
     ];
   };
-  const buildAverageTokenDetails = (metrics, requestCount) => {
+  const buildAverageTokenDetails = (metrics, requestCount, totalTokenCount) => {
+    const totalTokens = Number(totalTokenCount || 0);
+    const completionTokens = Number(metrics?.completion_tokens || 0);
+    const inputTokens = Number(metrics?.input_tokens || 0);
+    const cacheTokens = Number(metrics?.cache_tokens || 0);
     if (!metrics || requestCount <= 0) {
       return [];
     }
     return [
       {
         label: t('平均输入'),
-        value: formatAverageTokenValue(metrics.avg_prompt_tokens_per_request),
-        extra: `${t('占比')} ${formatPercent(metrics.prompt_share)}`,
+        value: formatAverageTokenValue(metrics.avg_input_tokens_per_request),
+        extra: `${t('占比')} ${formatPercent(metrics.input_share)}`,
       },
       {
         label: t('平均输出'),
-        value: formatAverageTokenValue(
-          metrics.avg_completion_tokens_per_request,
-        ),
+        value: formatAverageTokenValue(metrics.avg_completion_tokens_per_request),
         extra: `${t('占比')} ${formatPercent(metrics.completion_share)}`,
       },
       {
         label: t('平均缓存'),
         value: formatAverageTokenValue(metrics.avg_cache_tokens_per_request),
-        extra: `${t('占比')} ${formatPercent(metrics.cache_share)}`,
+        extra: `${t('占输入')} ${formatPercent(inputTokens > 0 ? cacheTokens / inputTokens : 0)}`,
       },
     ];
   };
@@ -486,8 +495,8 @@ const BillingAnalysis = () => {
       value: renderNumber(summary.token_count || 0),
       icon: Hash,
       accentClassName: 'bg-amber-100 text-amber-700',
-      detailsTitle: t('结构（含缓存）'),
-      details: buildTokenBreakdownDetails(tokenMetrics),
+      detailsTitle: t('结构'),
+      details: buildTokenBreakdownDetails(tokenMetrics, summary.token_count || 0),
     },
     {
       key: 'requests',
@@ -499,6 +508,7 @@ const BillingAnalysis = () => {
       details: buildAverageTokenDetails(
         tokenMetrics,
         summary.request_count || 0,
+        summary.token_count || 0,
       ),
     },
     {

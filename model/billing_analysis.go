@@ -61,15 +61,18 @@ type BillingAnalysisRow struct {
 }
 
 type BillingAnalysisTokenMetrics struct {
+	InputTokens                   int64   `json:"input_tokens"`
 	PromptTokens                  int64   `json:"prompt_tokens"`
 	CompletionTokens              int64   `json:"completion_tokens"`
 	CacheReadTokens               int64   `json:"cache_read_tokens"`
 	CacheWriteTokens              int64   `json:"cache_write_tokens"`
 	CacheTokens                   int64   `json:"cache_tokens"`
 	TotalTokensWithCache          int64   `json:"total_tokens_with_cache"`
+	InputShare                    float64 `json:"input_share"`
 	PromptShare                   float64 `json:"prompt_share"`
 	CompletionShare               float64 `json:"completion_share"`
 	CacheShare                    float64 `json:"cache_share"`
+	AvgInputTokensPerRequest      float64 `json:"avg_input_tokens_per_request"`
 	AvgPromptTokensPerRequest     float64 `json:"avg_prompt_tokens_per_request"`
 	AvgCompletionTokensPerRequest float64 `json:"avg_completion_tokens_per_request"`
 	AvgCacheTokensPerRequest      float64 `json:"avg_cache_tokens_per_request"`
@@ -177,7 +180,7 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 		completionTokens := int64(log.CompletionTokens)
 		cacheReadTokens := int64(other.CacheTokens)
 		cacheWriteTokens := getBillingAnalysisCacheWriteTokens(other)
-		promptTokens, tokenCount := normalizeBillingAnalysisPromptAndTokenCount(
+		inputTokens, promptTokens, tokenCount := normalizeBillingAnalysisPromptAndTokenCount(
 			rawPromptTokens,
 			completionTokens,
 			cacheReadTokens,
@@ -197,6 +200,7 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 			walletQuota,
 			subscriptionQuota,
 			tokenCount,
+			inputTokens,
 			promptTokens,
 			completionTokens,
 			cacheReadTokens,
@@ -212,6 +216,7 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 			walletQuota,
 			subscriptionQuota,
 			tokenCount,
+			inputTokens,
 			promptTokens,
 			completionTokens,
 			cacheReadTokens,
@@ -228,6 +233,7 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 			walletQuota,
 			subscriptionQuota,
 			tokenCount,
+			inputTokens,
 			promptTokens,
 			completionTokens,
 			cacheReadTokens,
@@ -244,6 +250,7 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 			walletQuota,
 			subscriptionQuota,
 			tokenCount,
+			inputTokens,
 			promptTokens,
 			completionTokens,
 			cacheReadTokens,
@@ -270,6 +277,7 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 				walletQuota,
 				subscriptionQuota,
 				tokenCount,
+				inputTokens,
 				promptTokens,
 				completionTokens,
 				cacheReadTokens,
@@ -288,6 +296,7 @@ func GetBillingAnalysis(filters BillingAnalysisFilters, includeAdminDimensions b
 				walletQuota,
 				subscriptionQuota,
 				tokenCount,
+				inputTokens,
 				promptTokens,
 				completionTokens,
 				cacheReadTokens,
@@ -391,7 +400,7 @@ func normalizeBillingAnalysisPromptAndTokenCount(
 	cacheReadTokens int64,
 	cacheWriteTokens int64,
 	other billingAnalysisLogOther,
-) (normalizedPromptTokens int64, tokenCount int64) {
+) (inputTokens int64, normalizedPromptTokens int64, tokenCount int64) {
 	switch {
 	case other.InputTokensTotal > 0:
 		totalInputTokens := int64(other.InputTokensTotal)
@@ -399,12 +408,12 @@ func normalizeBillingAnalysisPromptAndTokenCount(
 		if normalizedPromptTokens < 0 {
 			normalizedPromptTokens = 0
 		}
-		return normalizedPromptTokens, totalInputTokens + completionTokens
+		return totalInputTokens, normalizedPromptTokens, totalInputTokens + completionTokens
 	case other.Claude:
 		totalInputTokens := promptTokens + cacheReadTokens + cacheWriteTokens
-		return promptTokens, totalInputTokens + completionTokens
+		return totalInputTokens, promptTokens, totalInputTokens + completionTokens
 	default:
-		return promptTokens, promptTokens + completionTokens
+		return promptTokens, promptTokens, promptTokens + completionTokens
 	}
 }
 
@@ -467,6 +476,7 @@ func addBillingAnalysisSummary(
 	walletQuota int64,
 	subscriptionQuota int64,
 	tokenCount int64,
+	inputTokens int64,
 	promptTokens int64,
 	completionTokens int64,
 	cacheReadTokens int64,
@@ -480,6 +490,7 @@ func addBillingAnalysisSummary(
 	summary.RequestCount += 1
 	addBillingAnalysisTokenMetrics(
 		&summary.TokenMetrics,
+		inputTokens,
 		promptTokens,
 		completionTokens,
 		cacheReadTokens,
@@ -497,6 +508,7 @@ func addBillingAnalysisRow(
 	walletQuota int64,
 	subscriptionQuota int64,
 	tokenCount int64,
+	inputTokens int64,
 	promptTokens int64,
 	completionTokens int64,
 	cacheReadTokens int64,
@@ -526,6 +538,7 @@ func addBillingAnalysisRow(
 	row.RequestCount += 1
 	addBillingAnalysisTokenMetrics(
 		&row.TokenMetrics,
+		inputTokens,
 		promptTokens,
 		completionTokens,
 		cacheReadTokens,
@@ -538,17 +551,19 @@ func addBillingAnalysisRow(
 
 func addBillingAnalysisTokenMetrics(
 	metrics *BillingAnalysisTokenMetrics,
+	inputTokens int64,
 	promptTokens int64,
 	completionTokens int64,
 	cacheReadTokens int64,
 	cacheWriteTokens int64,
 ) {
+	metrics.InputTokens += inputTokens
 	metrics.PromptTokens += promptTokens
 	metrics.CompletionTokens += completionTokens
 	metrics.CacheReadTokens += cacheReadTokens
 	metrics.CacheWriteTokens += cacheWriteTokens
 	metrics.CacheTokens = metrics.CacheReadTokens + metrics.CacheWriteTokens
-	metrics.TotalTokensWithCache = metrics.PromptTokens + metrics.CompletionTokens + metrics.CacheTokens
+	metrics.TotalTokensWithCache = metrics.InputTokens + metrics.CompletionTokens
 }
 
 func finishBillingAnalysisRows(rowMap map[string]*BillingAnalysisRow) []BillingAnalysisRow {
@@ -687,15 +702,19 @@ func fillBillingAnalysisTokenMetrics(metrics *BillingAnalysisTokenMetrics, reque
 		return
 	}
 	metrics.CacheTokens = metrics.CacheReadTokens + metrics.CacheWriteTokens
-	metrics.TotalTokensWithCache = metrics.PromptTokens + metrics.CompletionTokens + metrics.CacheTokens
+	metrics.TotalTokensWithCache = metrics.InputTokens + metrics.CompletionTokens
 	if metrics.TotalTokensWithCache > 0 {
 		total := float64(metrics.TotalTokensWithCache)
+		metrics.InputShare = float64(metrics.InputTokens) / total
 		metrics.PromptShare = float64(metrics.PromptTokens) / total
 		metrics.CompletionShare = float64(metrics.CompletionTokens) / total
-		metrics.CacheShare = float64(metrics.CacheTokens) / total
+	}
+	if metrics.InputTokens > 0 {
+		metrics.CacheShare = float64(metrics.CacheTokens) / float64(metrics.InputTokens)
 	}
 	if requestCount > 0 {
 		divisor := float64(requestCount)
+		metrics.AvgInputTokensPerRequest = float64(metrics.InputTokens) / divisor
 		metrics.AvgPromptTokensPerRequest = float64(metrics.PromptTokens) / divisor
 		metrics.AvgCompletionTokensPerRequest = float64(metrics.CompletionTokens) / divisor
 		metrics.AvgCacheTokensPerRequest = float64(metrics.CacheTokens) / divisor
