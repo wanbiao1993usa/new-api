@@ -95,7 +95,8 @@ export const useRedemptionsData = () => {
   // Search redemption codes
   const searchRedemptions = async () => {
     const { searchKeyword } = getFormValues();
-    if (searchKeyword === '') {
+    const normalizedKeyword = searchKeyword.trim();
+    if (normalizedKeyword === '') {
       await loadRedemptions(1, pageSize);
       return;
     }
@@ -103,7 +104,7 @@ export const useRedemptionsData = () => {
     setSearching(true);
     try {
       const res = await API.get(
-        `/api/redemption/search?keyword=${searchKeyword}&p=1&page_size=${pageSize}`,
+        `/api/redemption/search?keyword=${encodeURIComponent(normalizedKeyword)}&p=1&page_size=${pageSize}`,
       );
       const { success, message, data } = res.data;
       if (success) {

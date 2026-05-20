@@ -71,6 +71,34 @@ func TestRedeemBlankTypeDefaultsToQuotaForLegacyCodes(t *testing.T) {
 	assert.Equal(t, 500, result.Quota)
 }
 
+func TestSearchRedemptionsFindsByKey(t *testing.T) {
+	truncateTables(t)
+
+	require.NoError(t, DB.Create(&Redemption{
+		Key:         "target-redemption-key",
+		Status:      common.RedemptionCodeStatusEnabled,
+		Type:        RedemptionTypeQuota,
+		Name:        "Unrelated Name",
+		Quota:       100,
+		CreatedTime: common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, DB.Create(&Redemption{
+		Key:         "other-redemption-key",
+		Status:      common.RedemptionCodeStatusEnabled,
+		Type:        RedemptionTypeQuota,
+		Name:        "Other Name",
+		Quota:       100,
+		CreatedTime: common.GetTimestamp(),
+	}).Error)
+
+	redemptions, total, err := SearchRedemptions("target-redemption-key", 0, 10)
+
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, total)
+	require.Len(t, redemptions, 1)
+	assert.Equal(t, "target-redemption-key", redemptions[0].Key)
+}
+
 func TestRedeemQuotaCodeTrimsWhitespace(t *testing.T) {
 	truncateTables(t)
 
