@@ -40,6 +40,7 @@ import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
 import PurchaseGuideLink from './PurchaseGuideLink';
+import { parseRedemptionCodes } from './redemptionCodes';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -168,18 +169,44 @@ const TopUp = () => {
   };
 
   const topUp = async () => {
-    const normalizedRedemptionCode = redemptionCode.trim();
-    if (normalizedRedemptionCode === '') {
+    const redemptionCodes = parseRedemptionCodes(redemptionCode);
+    if (redemptionCodes.length === 0) {
       showInfo(t('请输入兑换码！'));
       return;
     }
     setIsSubmitting(true);
     try {
-      const res = await API.post('/api/user/topup', {
-        key: normalizedRedemptionCode,
-      });
-      const { success, message, data } = res.data;
-      if (success) {
+      const results = [];
+      for (const code of redemptionCodes) {
+        try {
+          const res = await API.post('/api/user/topup', { key: code });
+          const { success, message, data } = res.data;
+          results.push({ code, success, message, data });
+        } catch (err) {
+          results.push({ code, success: false, message: t('请求失败') });
+        }
+      }
+
+      const successfulResults = results.filter((result) => result.success);
+      const failedResults = results.filter((result) => !result.success);
+
+      if (successfulResults.length === 0) {
+        showError(failedResults[0]?.message || t('兑换失败'));
+        return;
+      }
+
+      const successfulQuota = successfulResults.reduce((total, result) => {
+        if (result.data?.type === 'subscription') {
+          return total;
+        }
+        return total + Number(result.data?.quota ?? result.data ?? 0);
+      }, 0);
+      const successfulSubscriptions = successfulResults.filter(
+        (result) => result.data?.type === 'subscription',
+      );
+
+      if (redemptionCodes.length === 1) {
+        const data = successfulResults[0].data;
         if (data?.type === 'subscription') {
           const planTitle = data?.plan?.title || t('订阅套餐');
           showSuccess(t('订阅兑换成功！'));
@@ -188,30 +215,70 @@ const TopUp = () => {
             content: `${t('成功兑换订阅套餐：')}${planTitle}`,
             centered: true,
           });
-          await getSubscriptionSelf();
-          await getUserQuota();
         } else {
-          const quota = Number(data?.quota ?? data ?? 0);
+          const quota = successfulQuota;
           showSuccess(t('兑换成功！'));
           Modal.success({
             title: t('兑换成功！'),
             content: t('成功兑换额度：') + renderQuota(quota),
             centered: true,
           });
-          if (userState.user) {
-            const updatedUser = {
-              ...userState.user,
-              quota: userState.user.quota + quota,
-            };
-            userDispatch({ type: 'login', payload: updatedUser });
-          }
         }
-        setRedemptionCode('');
       } else {
-        showError(message);
+        const content = [
+          t('成功兑换 {{count}} 个兑换码', {
+            count: successfulResults.length,
+          }),
+        ];
+        if (successfulQuota > 0) {
+          content.push(t('成功兑换额度：') + renderQuota(successfulQuota));
+        }
+        if (successfulSubscriptions.length > 0) {
+          content.push(
+            t('成功兑换订阅数量：{{count}}', {
+              count: successfulSubscriptions.length,
+            }),
+          );
+        }
+        if (failedResults.length > 0) {
+          content.push(
+            t('失败 {{count}} 个兑换码，已保留在输入框中', {
+              count: failedResults.length,
+            }),
+          );
+        }
+        const modalConfig = {
+          title: failedResults.length > 0 ? t('部分兑换成功') : t('兑换成功！'),
+          content: (
+            <div className='space-y-1'>
+              {content.map((line) => (
+                <div key={line}>{line}</div>
+              ))}
+            </div>
+          ),
+          centered: true,
+        };
+        if (failedResults.length > 0) {
+          Modal.warning(modalConfig);
+        } else {
+          Modal.success(modalConfig);
+        }
       }
-    } catch (err) {
-      showError(t('请求失败'));
+
+      if (successfulQuota > 0 && userState.user) {
+        userDispatch({
+          type: 'login',
+          payload: {
+            ...userState.user,
+            quota: userState.user.quota + successfulQuota,
+          },
+        });
+      }
+      if (successfulSubscriptions.length > 0) {
+        await getSubscriptionSelf();
+        await getUserQuota();
+      }
+      setRedemptionCode(failedResults.map((result) => result.code).join('\n'));
     } finally {
       setIsSubmitting(false);
     }

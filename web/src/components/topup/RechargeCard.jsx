@@ -671,26 +671,14 @@ const RechargeCard = ({
           getFormApi={(api) => (redeemFormApiRef.current = api)}
           initValues={{ redemptionCode: redemptionCode }}
         >
-          <Form.Input
+          <Form.TextArea
             field='redemptionCode'
             noLabel={true}
-            placeholder={t('请输入兑换码')}
+            placeholder={t('请输入兑换码，每行一个')}
             value={redemptionCode}
             onChange={(value) => setRedemptionCode(value)}
-            prefix={<IconGift />}
-            suffix={
-              <div className='flex items-center gap-2'>
-                <Button
-                  type='primary'
-                  theme='solid'
-                  onClick={topUp}
-                  loading={isSubmitting}
-                >
-                  {t('兑换')}
-                </Button>
-              </div>
-            }
             showClear
+            autosize={{ minRows: 2, maxRows: 6 }}
             style={{ width: '100%' }}
             extraText={
               topUpLink && (
@@ -708,6 +696,17 @@ const RechargeCard = ({
               )
             }
           />
+          <div className='mt-3 flex justify-end'>
+            <Button
+              type='primary'
+              theme='solid'
+              onClick={topUp}
+              loading={isSubmitting}
+              icon={<IconGift />}
+            >
+              {t('兑换')}
+            </Button>
+          </div>
         </Form>
       </Card>
     </Space>
