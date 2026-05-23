@@ -524,6 +524,37 @@ func TestBuildTieredTokenParams_Claude_WithCache(t *testing.T) {
 	}
 }
 
+func TestBuildTieredTokenParams_Claude_WithCacheCreationTotalOnly(t *testing.T) {
+	usage := &dto.Usage{
+		PromptTokens:     10,
+		CompletionTokens: 10,
+		UsageSemantic:    "anthropic",
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:         3823,
+			CachedCreationTokens: 2059,
+		},
+	}
+	expr := `tier("base", p * 5 + c * 25 + cr * 0.5 + cc * 6.25 + cc1h * 10)`
+	usedVars := billingexpr.UsedVars(expr)
+	params := BuildTieredTokenParams(usage, true, usedVars)
+
+	if params.CC != 2059 {
+		t.Fatalf("CC = %f, want 2059", params.CC)
+	}
+	if params.CC1h != 0 {
+		t.Fatalf("CC1h = %f, want 0", params.CC1h)
+	}
+
+	cost, _, err := billingexpr.RunExpr(expr, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCost := 10.0*5 + 10.0*25 + 3823.0*0.5 + 2059.0*6.25
+	if math.Abs(cost-wantCost) > 1e-6 {
+		t.Fatalf("cost = %f, want %f", cost, wantCost)
+	}
+}
+
 func TestBuildTieredTokenParams_GPT_AudioOutput(t *testing.T) {
 	usage := &dto.Usage{
 		PromptTokens:     1000,
