@@ -874,6 +874,20 @@ export function renderGroupRatioDiscount(ratio) {
   );
 }
 
+function formatGroupDiscountDescription(description) {
+  if (!description || description.includes('倍率为')) {
+    return description;
+  }
+
+  const match = description.match(/^所有\s*([0-9]+(?:\.[0-9]+)?)\s*折模型$/);
+  if (!match) {
+    return description;
+  }
+
+  const ratio = Number((Number(match[1]) * 0.1).toFixed(10)).toString();
+  return `${description}，倍率为${ratio}`;
+}
+
 const measureTextWidth = (
   text,
   style = {
@@ -967,6 +981,9 @@ export const renderGroupOption = (item) => {
     emptyContent,
     ...rest
   } = item;
+  const description = formatGroupDiscountDescription(
+    item.desc || (label !== value ? label : ''),
+  );
 
   const baseStyle = {
     display: 'flex',
@@ -1006,9 +1023,11 @@ export const renderGroupOption = (item) => {
         <Typography.Text strong type={disabled ? 'tertiary' : undefined}>
           {value}
         </Typography.Text>
-        <Typography.Text type='secondary' size='small'>
-          {label}
-        </Typography.Text>
+        {description && (
+          <Typography.Text type='secondary' size='small'>
+            {description}
+          </Typography.Text>
+        )}
       </div>
       {item.ratio && renderGroupRatioDiscount(item.ratio)}
     </div>

@@ -553,13 +553,15 @@ func TestAddTokenRejectsHiddenButAccessibleGroup(t *testing.T) {
 	}
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 10)
+	ctx.Set("group", "vip")
 	AddToken(ctx)
 
 	response := decodeAPIResponse(t, recorder)
 	if response.Success {
 		t.Fatalf("expected hidden group token creation to fail")
 	}
-	if !strings.Contains(response.Message, "无权创建或编辑 default 分组令牌") {
+	if !strings.Contains(response.Message, "无权创建或编辑 default 分组令牌") ||
+		!strings.Contains(response.Message, "请退出账号后重新登录再试") {
 		t.Fatalf("unexpected error message: %s", response.Message)
 	}
 }
@@ -695,6 +697,7 @@ func TestUpdateTokenAllowsKeepingHiddenAccessibleGroup(t *testing.T) {
 	}
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 11)
+	ctx.Set("group", "vip")
 	UpdateToken(ctx)
 
 	response := decodeAPIResponse(t, recorder)
@@ -728,13 +731,15 @@ func TestUpdateTokenRejectsChangingToHiddenAccessibleGroup(t *testing.T) {
 	}
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 12)
+	ctx.Set("group", "vip")
 	UpdateToken(ctx)
 
 	response := decodeAPIResponse(t, recorder)
 	if response.Success {
 		t.Fatalf("expected changing to hidden group to fail")
 	}
-	if !strings.Contains(response.Message, "无权创建或编辑 default 分组令牌") {
+	if !strings.Contains(response.Message, "无权创建或编辑 default 分组令牌") ||
+		!strings.Contains(response.Message, "请退出账号后重新登录再试") {
 		t.Fatalf("unexpected error message: %s", response.Message)
 	}
 }

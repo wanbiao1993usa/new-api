@@ -195,7 +195,7 @@ func validateTokenGroupVisible(c *gin.Context, userId int, group string) error {
 		return err
 	}
 	if !service.GroupInUserVisibleGroups(userGroup, group) {
-		return fmt.Errorf("无权创建或编辑 %s 分组令牌", group)
+		return fmt.Errorf("无权创建或编辑 %s 分组令牌。如果刚开通套餐或升级账户等级，请退出账号后重新登录再试", group)
 	}
 	return nil
 }

@@ -143,10 +143,11 @@ const EditTokenModal = (props) => {
     const { success, message, data } = res.data;
     if (success) {
       let localGroupOptions = Object.entries(data).map(([group, info]) => ({
-        label: info.desc,
+        label: info.desc || group,
         value: group,
         ratio: info.ratio,
         billing_type: info.billing_type || 'default',
+        desc: info.desc || '',
       }));
       if (statusState?.status?.default_use_auto_group) {
         if (localGroupOptions.some((group) => group.value === 'auto')) {
