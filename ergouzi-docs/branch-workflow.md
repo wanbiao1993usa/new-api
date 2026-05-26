@@ -1,26 +1,27 @@
-# Ergouzi Branch Workflow
+# Ergouzi 分支协作说明
 
-> Updated: 2026-05-26
+> 更新日期：2026-05-26
 
-This document is for Ergouzi teammates working directly in this `new-api` repository.
+这份文档给直接在 `new-api` 仓库里开发的 Ergouzi 组员看。
 
-## What Changed
+## 发生了什么变化
 
-`main` is now the Ergouzi customized main branch.
+现在 `main` 已经调整为 Ergouzi 的二开主分支。
 
-The previous `main` was an older New API / fork branch and had stopped representing the active Ergouzi development line. The historical customized branch `codex/subscription-redemption-codes` has been fast-forwarded into `main`.
+之前的 `main` 是较早的 New API / fork 分支，已经不再代表 Ergouzi 当前实际使用的开发线。
+历史二开分支 `codex/subscription-redemption-codes` 已经被快进合入到 `main`。
 
-Current branch roles:
+当前分支职责如下：
 
-| Branch | Purpose |
+| 分支 | 用途 |
 |---|---|
-| `main` | Ergouzi customized main branch. Start normal development here. |
-| `upstream-sync` | Tracks upstream New API `main`. Do not put Ergouzi business changes here. |
-| `codex/subscription-redemption-codes` | Historical customized branch. It currently points to the same commit as `main`, but should not be used for new work. |
-| `feature/*` / `fix/*` | Normal feature and fix branches, created from `main`. |
-| `sync/upstream-YYYYMMDD` | Temporary branch for integrating upstream New API changes into Ergouzi `main`. |
+| `main` | Ergouzi 二开主分支。日常开发从这里开始。 |
+| `upstream-sync` | 跟踪上游 New API 的 `main`。不要在这里提交 Ergouzi 业务改动。 |
+| `codex/subscription-redemption-codes` | 历史二开分支。目前和 `main` 指向同一个提交，但后续不要再基于它开发。 |
+| `feature/*` / `fix/*` | 日常功能分支和修复分支，从 `main` 拉出。 |
+| `sync/upstream-YYYYMMDD` | 同步上游 New API 时使用的临时集成分支。 |
 
-Current reference points:
+当前记录的参考点位：
 
 | Ref | Commit |
 |---|---|
@@ -28,9 +29,9 @@ Current reference points:
 | `origin/codex/subscription-redemption-codes` | `c1c0356a3abe702da498d5d2472ccb27a0e45027` |
 | `origin/upstream-sync` | `65f8afe92276203a33413a1bd5d5172ccd46e04e` |
 
-## Sync Your Local Repository
+## 同步你的本地仓库
 
-If you have no local uncommitted changes:
+如果你本地没有未提交改动，可以直接执行：
 
 ```bash
 git fetch origin --prune
@@ -38,14 +39,14 @@ git checkout main
 git pull --ff-only origin main
 ```
 
-Fetch the upstream baseline branch:
+拉取共享的上游基线分支：
 
 ```bash
 git fetch origin upstream-sync:upstream-sync
 git branch --set-upstream-to=origin/upstream-sync upstream-sync
 ```
 
-Start new work from `main`:
+新需求或修复请从 `main` 拉分支：
 
 ```bash
 git checkout main
@@ -53,15 +54,15 @@ git pull --ff-only origin main
 git checkout -b feature/your-feature
 ```
 
-## If You Are Still On `codex/subscription-redemption-codes`
+## 如果你还停在 `codex/subscription-redemption-codes`
 
-Check your local status first:
+先检查本地状态：
 
 ```bash
 git status --short --branch
 ```
 
-If the working tree is clean:
+如果工作区是干净的：
 
 ```bash
 git fetch origin --prune
@@ -69,16 +70,16 @@ git checkout main
 git pull --ff-only origin main
 ```
 
-If your local `main` does not exist or is not trustworthy:
+如果你的本地 `main` 不存在，或者你不确定它是不是正确的：
 
 ```bash
 git fetch origin --prune
 git checkout -B main origin/main
 ```
 
-## If You Have Local Uncommitted Changes
+## 如果你本地有未提交改动
 
-Do not switch branches blindly. Stash first:
+不要直接切分支。建议先 stash：
 
 ```bash
 git status --short --branch
@@ -89,13 +90,13 @@ git pull --ff-only origin main
 git stash pop
 ```
 
-If `stash pop` reports conflicts, resolve them before continuing. Do not commit unresolved conflict markers.
+如果 `stash pop` 出现冲突，先解决冲突再继续。不要把未解决的冲突标记提交进去。
 
-## Upstream Sync Rules
+## 上游同步规则
 
-Most developers do not need to configure the official upstream remote. Use `origin/upstream-sync` as the shared upstream baseline.
+大多数开发同学不需要配置官方上游 remote。平时只需要使用 `origin/upstream-sync` 作为共享的上游基线。
 
-The person doing upstream sync may configure:
+负责同步上游的人可以配置：
 
 ```bash
 git remote add upstream https://github.com/QuantumNous/new-api.git
@@ -103,12 +104,12 @@ git remote set-url --push upstream DISABLED
 git fetch upstream main
 ```
 
-Rules:
+规则：
 
-- Do not write Ergouzi business code on `upstream-sync`.
-- Do not push to the official upstream repository.
-- Keep `upstream-sync` as a clean upstream tracking branch.
-- For upstream integration, create a temporary branch from Ergouzi `main`:
+- 不要在 `upstream-sync` 上提交 Ergouzi 业务代码。
+- 不要 push 到官方上游仓库。
+- 保持 `upstream-sync` 是干净的上游跟踪分支。
+- 同步上游时，从 Ergouzi `main` 拉一个临时分支：
 
 ```bash
 git checkout main
@@ -118,26 +119,26 @@ git fetch upstream main
 git merge upstream/main
 ```
 
-The sync pull request should record:
+同步上游的 PR 里建议记录：
 
-- upstream from / to commits;
-- Ergouzi `main` base commit;
-- conflict files and resolution notes;
-- database or config changes;
-- verification results;
-- deploy recommendation.
+- 上游同步的起止 commit；
+- Ergouzi `main` 的基准 commit；
+- 冲突文件和解决说明；
+- 数据库或配置变更；
+- 验证结果；
+- 是否建议部署。
 
-## Do Not
+## 不要做这些事
 
-- Do not start new work from `codex/subscription-redemption-codes`.
-- Do not commit Ergouzi changes to `upstream-sync`.
-- Do not force-push `main`.
-- Do not merge upstream changes directly into `main` without a sync branch and verification.
-- Do not push to `upstream`; keep its push URL disabled.
+- 不要再从 `codex/subscription-redemption-codes` 开始新开发。
+- 不要把 Ergouzi 业务改动提交到 `upstream-sync`。
+- 不要 force-push `main`。
+- 不要绕过同步分支和验证，直接把上游改动合进 `main`。
+- 不要 push 到 `upstream`，保持它的 push URL 禁用。
 
-## When In Doubt
+## 不确定时怎么处理
 
-Stop and share:
+先停下来，把下面信息贴给维护同学：
 
 ```bash
 git status --short --branch
@@ -145,4 +146,4 @@ git branch -vv
 git remote -v
 ```
 
-Then ask before running `reset`, `rebase`, `push --force`, or deleting branches.
+执行 `reset`、`rebase`、`push --force` 或删除分支前，先确认清楚。
