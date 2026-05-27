@@ -105,6 +105,7 @@ const HeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
             isLoading={isLoading}
             userState={userState}
             pricingRequireAuth={pricingRequireAuth}
+            afterSalesQRCode={statusState?.status?.wechat_qrcode}
           />
 
           <ActionButtons

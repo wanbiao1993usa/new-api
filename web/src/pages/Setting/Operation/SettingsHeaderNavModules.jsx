@@ -42,6 +42,7 @@ const defaultHeaderNavModules = {
     requireAuth: false,
   },
   docs: true,
+  afterSales: true,
   about: true,
 };
 
@@ -185,6 +186,11 @@ export default function SettingsHeaderNavModules(props) {
       key: 'docs',
       title: t('文档'),
       description: t('系统文档和帮助信息'),
+    },
+    {
+      key: 'afterSales',
+      title: t('售后'),
+      description: t('售后微信群二维码入口'),
     },
     {
       key: 'about',
