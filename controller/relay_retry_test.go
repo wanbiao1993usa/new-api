@@ -16,7 +16,7 @@ func TestShouldRetryOnUpstreamInsufficientQuota403(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 
 	err := types.NewOpenAIError(
-		errors.New("用户额度不足, 剩余额度: ＄-4.544458"),
+		errors.New("insufficient balance, remaining quota: 4.544458"),
 		types.ErrorCodeBadResponseBody,
 		http.StatusForbidden,
 	)
@@ -29,11 +29,26 @@ func TestShouldNotRetryOnLocalInsufficientQuota403(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 
 	err := types.NewErrorWithStatusCode(
-		errors.New("用户额度不足, 剩余额度: ＄-4.544458"),
+		errors.New("insufficient balance, remaining quota: 4.544458"),
 		types.ErrorCodeInsufficientUserQuota,
 		http.StatusForbidden,
 		types.ErrOptionWithSkipRetry(),
 	)
+
+	require.False(t, shouldRetry(ctx, err, 1))
+}
+
+func TestShouldNotRetryUpstreamInsufficientBalanceOnSpecificChannel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("specific_channel_id", "1")
+
+	err := types.NewOpenAIError(
+		errors.New("insufficient balance"),
+		types.ErrorCodeBadResponseBody,
+		http.StatusForbidden,
+	)
+	err = types.NormalizeUpstreamInsufficientBalanceError(err)
 
 	require.False(t, shouldRetry(ctx, err, 1))
 }

@@ -75,6 +75,22 @@ func TestGetChannelUsesCompactFallbackWhenExactRowsAreMissingOnRetry(t *testing.
 	require.Equal(t, lowPriorityChannel.Id, channel.Id)
 }
 
+func TestGetChannelExcludesFailedChannelBeforePrioritySelection(t *testing.T) {
+	truncateTables(t)
+
+	highPriority := int64(10)
+	lowPriority := int64(1)
+	highPriorityChannel := insertCompactFallbackChannel(t, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled)
+	lowPriorityChannel := insertCompactFallbackChannel(t, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled)
+	insertCompactFallbackAbility(t, highPriorityChannel.Id, &highPriority)
+	insertCompactFallbackAbility(t, lowPriorityChannel.Id, &lowPriority)
+
+	channel, err := GetChannel("default", "gpt-5.5", 0, highPriorityChannel.Id)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	require.Equal(t, lowPriorityChannel.Id, channel.Id)
+}
+
 func TestIsChannelEnabledForGroupModelDBAllowsCompactAliasFromBaseModel(t *testing.T) {
 	truncateTables(t)
 

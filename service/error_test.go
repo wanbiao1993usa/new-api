@@ -1,6 +1,10 @@
 package service
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/types"
@@ -54,4 +58,20 @@ func TestResetStatusCode(t *testing.T) {
 			require.Equal(t, tc.expectedCode, newAPIError.StatusCode)
 		})
 	}
+}
+
+func TestRelayErrorHandlerNormalizesUpstreamInsufficientBalance(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusForbidden,
+		Body: io.NopCloser(strings.NewReader(
+			`{"error":{"message":"Your credit balance is too low","type":"upstream_error","code":"insufficient_quota"}}`,
+		)),
+	}
+
+	err := RelayErrorHandler(context.Background(), resp, true)
+
+	require.NotNil(t, err)
+	require.Equal(t, types.ErrorCodeUpstreamInsufficientBalance, err.GetErrorCode())
+	require.Equal(t, types.UpstreamInsufficientBalanceMessage, err.Error())
+	require.NotContains(t, err.Error(), "credit balance")
 }

@@ -101,6 +101,10 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 
 	err = common.Unmarshal(responseBody, &errResponse)
 	if err != nil {
+		if types.IsUpstreamInsufficientBalanceMessage(resp.StatusCode, string(responseBody)) {
+			newApiErr.SetLocalMessage(types.UpstreamInsufficientBalanceMessage, types.ErrorCodeUpstreamInsufficientBalance)
+			return
+		}
 		if showBodyWhenFail {
 			newApiErr.Err = buildErrWithBody("")
 		} else {
@@ -115,15 +119,21 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		oaiError := errResponse.TryToOpenAIError()
 		if oaiError != nil {
 			newApiErr = types.WithOpenAIError(*oaiError, resp.StatusCode)
+			newApiErr = types.NormalizeUpstreamInsufficientBalanceError(newApiErr)
 			if showBodyWhenFail {
-				newApiErr.Err = buildErrWithBody(newApiErr.Error())
+				if !types.IsUpstreamInsufficientBalanceError(newApiErr) {
+					newApiErr.Err = buildErrWithBody(newApiErr.Error())
+				}
 			}
 			return
 		}
 	}
 	newApiErr = types.NewOpenAIError(errors.New(errResponse.ToMessage()), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	newApiErr = types.NormalizeUpstreamInsufficientBalanceError(newApiErr)
 	if showBodyWhenFail {
-		newApiErr.Err = buildErrWithBody(newApiErr.Error())
+		if !types.IsUpstreamInsufficientBalanceError(newApiErr) {
+			newApiErr.Err = buildErrWithBody(newApiErr.Error())
+		}
 	}
 	return
 }
