@@ -28,6 +28,7 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
       plans: true,
       pricing: true,
       docs: true,
+      afterSales: true,
       about: true,
     };
 
@@ -68,6 +69,10 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
             },
           ]
         : []),
+      {
+        text: t('售后'),
+        itemKey: 'afterSales',
+      },
       {
         text: t('关于'),
         itemKey: 'about',

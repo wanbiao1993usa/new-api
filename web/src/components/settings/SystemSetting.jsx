@@ -77,6 +77,7 @@ const SystemSetting = () => {
     WeChatServerAddress: '',
     WeChatServerToken: '',
     WeChatAccountQRCodeImageURL: '',
+    AfterSalesQRCodeImageURL: '',
     TurnstileCheckEnabled: '',
     TurnstileSiteKey: '',
     TurnstileSecretKey: '',
@@ -442,6 +443,15 @@ const SystemSetting = () => {
       options.push({
         key: 'WeChatAccountQRCodeImageURL',
         value: inputs.WeChatAccountQRCodeImageURL,
+      });
+    }
+    if (
+      originInputs['AfterSalesQRCodeImageURL'] !==
+      inputs.AfterSalesQRCodeImageURL
+    ) {
+      options.push({
+        key: 'AfterSalesQRCodeImageURL',
+        value: inputs.AfterSalesQRCodeImageURL,
       });
     }
     if (
@@ -1572,6 +1582,12 @@ const SystemSetting = () => {
                       <Form.Input
                         field='WeChatAccountQRCodeImageURL'
                         label={t('微信公众号二维码图片链接')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.Input
+                        field='AfterSalesQRCodeImageURL'
+                        label={t('售后微信群二维码图片链接')}
                       />
                     </Col>
                   </Row>

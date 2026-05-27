@@ -38,6 +38,7 @@ const defaultHeaderNavModules = {
     requireAuth: false,
   },
   docs: true,
+  afterSales: true,
   about: true,
 };
 
