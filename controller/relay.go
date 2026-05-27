@@ -546,8 +546,7 @@ func RelayTask(c *gin.Context) {
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
-				if taskErr != nil && (taskErr.Code == string(types.ErrorCodeUpstreamInsufficientBalance) ||
-					types.IsUpstreamInsufficientBalanceMessage(taskErr.StatusCode, taskErr.Message)) {
+				if isTaskUpstreamInsufficientBalanceError(taskErr) {
 					taskErr = service.TaskErrorWrapper(taskErr.Error, taskErr.Code, taskErr.StatusCode)
 				} else {
 					taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
@@ -573,7 +572,7 @@ func RelayTask(c *gin.Context) {
 			break
 		}
 
-		if types.IsUpstreamInsufficientBalanceMessage(taskErr.StatusCode, taskErr.Message) {
+		if isTaskUpstreamInsufficientBalanceError(taskErr) {
 			taskErr.Code = string(types.ErrorCodeUpstreamInsufficientBalance)
 			taskErr.Message = types.UpstreamInsufficientBalanceMessage
 			taskErr.Error = errors.New(types.UpstreamInsufficientBalanceMessage)
@@ -655,8 +654,7 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 	if _, ok := c.Get("specific_channel_id"); ok {
 		return false
 	}
-	if taskErr.Code == string(types.ErrorCodeUpstreamInsufficientBalance) ||
-		types.IsUpstreamInsufficientBalanceMessage(taskErr.StatusCode, taskErr.Message) {
+	if isTaskUpstreamInsufficientBalanceError(taskErr) {
 		return true
 	}
 	if taskErr.StatusCode == http.StatusTooManyRequests {
@@ -686,4 +684,16 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 		return false
 	}
 	return true
+}
+
+func isTaskUpstreamInsufficientBalanceError(taskErr *dto.TaskError) bool {
+	if taskErr == nil || taskErr.LocalError {
+		return false
+	}
+	if taskErr.Code == string(types.ErrorCodeInsufficientUserQuota) ||
+		taskErr.Code == string(types.ErrorCodePreConsumeTokenQuotaFailed) {
+		return false
+	}
+	return taskErr.Code == string(types.ErrorCodeUpstreamInsufficientBalance) ||
+		types.IsUpstreamInsufficientBalanceMessage(taskErr.StatusCode, taskErr.Message)
 }

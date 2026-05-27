@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -74,4 +75,19 @@ func TestRelayErrorHandlerNormalizesUpstreamInsufficientBalance(t *testing.T) {
 	require.Equal(t, types.ErrorCodeUpstreamInsufficientBalance, err.GetErrorCode())
 	require.Equal(t, types.UpstreamInsufficientBalanceMessage, err.Error())
 	require.NotContains(t, err.Error(), "credit balance")
+}
+
+func TestTaskErrorFromAPIErrorMarksPreConsumeErrorsLocal(t *testing.T) {
+	apiErr := types.NewErrorWithStatusCode(
+		errors.New("订阅总额度不足"),
+		types.ErrorCodeInsufficientUserQuota,
+		http.StatusForbidden,
+		types.ErrOptionWithSkipRetry(),
+	)
+
+	taskErr := TaskErrorFromAPIError(apiErr)
+
+	require.NotNil(t, taskErr)
+	require.True(t, taskErr.LocalError)
+	require.Equal(t, string(types.ErrorCodeInsufficientUserQuota), taskErr.Code)
 }

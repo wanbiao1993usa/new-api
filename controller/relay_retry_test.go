@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -36,6 +38,37 @@ func TestShouldNotRetryOnLocalInsufficientQuota403(t *testing.T) {
 	)
 
 	require.False(t, shouldRetry(ctx, err, 1))
+}
+
+func TestShouldNotRetryTaskLocalInsufficientQuota(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	apiErr := types.NewErrorWithStatusCode(
+		errors.New("订阅总额度不足"),
+		types.ErrorCodeInsufficientUserQuota,
+		http.StatusForbidden,
+		types.ErrOptionWithSkipRetry(),
+	)
+	taskErr := service.TaskErrorFromAPIError(apiErr)
+
+	require.False(t, isTaskUpstreamInsufficientBalanceError(taskErr))
+	require.False(t, shouldRetryTaskRelay(ctx, 1, taskErr, 1))
+}
+
+func TestShouldRetryTaskUpstreamInsufficientBalance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	taskErr := &dto.TaskError{
+		Code:       "fail_to_fetch_task",
+		Message:    "unexpected status 403 Forbidden: insufficient balance",
+		StatusCode: http.StatusForbidden,
+		Error:      errors.New("unexpected status 403 Forbidden: insufficient balance"),
+	}
+
+	require.True(t, isTaskUpstreamInsufficientBalanceError(taskErr))
+	require.True(t, shouldRetryTaskRelay(ctx, 1, taskErr, 1))
 }
 
 func TestShouldNotRetryUpstreamInsufficientBalanceOnSpecificChannel(t *testing.T) {
