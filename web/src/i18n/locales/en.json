@@ -1555,6 +1555,7 @@
     "微信账户绑定成功！": "WeChat account bound successfully!",
     "售后": "After-sales",
     "售后微信群二维码入口": "After-sales WeChat group QR code entry",
+    "售后微信群二维码图片链接": "After-sales WeChat group QR code image link",
     "暂未配置售后微信群二维码": "After-sales WeChat group QR code is not configured yet",
     "必填：请输入服务器地址以自动生成完整端点 URL": "Required: Enter server address to auto-generate full endpoint URLs",
     "必填。对请求的 model 名称进行匹配，任意一条匹配即命中该规则。": "Required. Match the requested model name; any match triggers this rule.",

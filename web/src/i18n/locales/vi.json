@@ -1533,6 +1533,7 @@
     "微信账户绑定成功！": "Đã liên kết tài khoản WeChat thành công!",
     "售后": "Hỗ trợ sau bán hàng",
     "售后微信群二维码入口": "Lối vào mã QR nhóm WeChat hỗ trợ sau bán hàng",
+    "售后微信群二维码图片链接": "Liên kết hình ảnh mã QR nhóm WeChat hỗ trợ sau bán hàng",
     "暂未配置售后微信群二维码": "Chưa cấu hình mã QR nhóm WeChat hỗ trợ sau bán hàng",
     "必填。对请求的 model 名称进行匹配，任意一条匹配即命中该规则。": "Bắt buộc. Khớp tên model được yêu cầu; bất kỳ kết quả khớp nào đều kích hoạt quy tắc này.",
     "必须全部满足（AND）": "Phải đáp ứng tất cả (AND)",

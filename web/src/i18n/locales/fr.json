@@ -1561,6 +1561,7 @@
     "微信账户绑定成功！": "Compte WeChat lié avec succès !",
     "售后": "Après-vente",
     "售后微信群二维码入口": "Entrée du code QR du groupe WeChat après-vente",
+    "售后微信群二维码图片链接": "Lien de l'image du code QR du groupe WeChat après-vente",
     "暂未配置售后微信群二维码": "Le code QR du groupe WeChat après-vente n'est pas encore configuré",
     "必填。对请求的 model 名称进行匹配，任意一条匹配即命中该规则。": "Requis. Correspondance du nom du modèle demandé ; toute correspondance déclenche cette règle.",
     "必须全部满足（AND）": "Tous doivent être satisfaits (AND)",
