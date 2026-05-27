@@ -139,6 +139,9 @@ func getPriority(group string, model string, retry int, excludeChannelIds ...int
 
 	// 确定要使用的优先级
 	var priorityToUse int
+	if len(excludeChannelIds) > 0 {
+		retry = 0
+	}
 	if retry >= len(priorities) {
 		// 如果重试次数大于优先级数，则使用最小的优先级
 		priorityToUse = priorities[len(priorities)-1]
@@ -157,6 +160,9 @@ func getChannelQuery(group string, model string, retry int, excludeChannelIds ..
 	if len(excludeChannelIds) > 0 {
 		channelQuery = channelQuery.Where("channel_id NOT IN ?", excludeChannelIds)
 	}
+	if len(excludeChannelIds) > 0 {
+		retry = 0
+	}
 	if retry != 0 {
 		priority, err := getPriority(group, model, retry, excludeChannelIds...)
 		if err != nil {
@@ -172,7 +178,7 @@ func getChannelQuery(group string, model string, retry int, excludeChannelIds ..
 	return channelQuery, nil
 }
 
-func getResponsesCompactFallbackAbilities(group string, model string, retry int) ([]Ability, error) {
+func getResponsesCompactFallbackAbilities(group string, model string, retry int, excludeChannelIds ...int) ([]Ability, error) {
 	if !ratio_setting.IsCompactModelName(model) {
 		return nil, nil
 	}
@@ -182,7 +188,12 @@ func getResponsesCompactFallbackAbilities(group string, model string, retry int)
 	}
 
 	var abilities []Ability
-	err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, baseModel, true).Find(&abilities).Error
+	query := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, baseModel, true)
+	if len(excludeChannelIds) > 0 {
+		query = query.Where("channel_id NOT IN ?", excludeChannelIds)
+		retry = 0
+	}
+	err := query.Find(&abilities).Error
 	if err != nil || len(abilities) == 0 {
 		return nil, err
 	}
@@ -254,7 +265,7 @@ func GetChannel(group string, model string, retry int, excludeChannelIds ...int)
 	var err error = nil
 	channelQuery, err := getChannelQuery(group, model, retry, excludeChannelIds...)
 	if err != nil {
-		abilities, fallbackErr := getResponsesCompactFallbackAbilities(group, model, retry)
+		abilities, fallbackErr := getResponsesCompactFallbackAbilities(group, model, retry, excludeChannelIds...)
 		if fallbackErr != nil {
 			return nil, fallbackErr
 		}
@@ -272,7 +283,7 @@ func GetChannel(group string, model string, retry int, excludeChannelIds ...int)
 		}
 	}
 	if len(abilities) == 0 {
-		abilities, err = getResponsesCompactFallbackAbilities(group, model, retry)
+		abilities, err = getResponsesCompactFallbackAbilities(group, model, retry, excludeChannelIds...)
 		if err != nil {
 			return nil, err
 		}

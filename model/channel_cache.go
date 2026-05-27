@@ -127,6 +127,7 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, excludeCha
 			}
 		}
 		channels = filteredChannels
+		retry = 0
 		if len(channels) == 0 {
 			return nil, nil
 		}

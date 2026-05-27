@@ -79,16 +79,77 @@ func TestGetChannelExcludesFailedChannelBeforePrioritySelection(t *testing.T) {
 	truncateTables(t)
 
 	highPriority := int64(10)
-	lowPriority := int64(1)
+	middlePriority := int64(5)
+	lowPriority := int64(0)
 	highPriorityChannel := insertCompactFallbackChannel(t, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled)
+	middlePriorityChannel := insertCompactFallbackChannel(t, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled)
 	lowPriorityChannel := insertCompactFallbackChannel(t, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled)
+	setChannelPriority(t, highPriorityChannel.Id, highPriority)
+	setChannelPriority(t, middlePriorityChannel.Id, middlePriority)
+	setChannelPriority(t, lowPriorityChannel.Id, lowPriority)
 	insertCompactFallbackAbility(t, highPriorityChannel.Id, &highPriority)
+	insertCompactFallbackAbility(t, middlePriorityChannel.Id, &middlePriority)
 	insertCompactFallbackAbility(t, lowPriorityChannel.Id, &lowPriority)
 
-	channel, err := GetChannel("default", "gpt-5.5", 0, highPriorityChannel.Id)
+	channel, err := GetChannel("default", "gpt-5.5", 1, highPriorityChannel.Id)
 	require.NoError(t, err)
 	require.NotNil(t, channel)
-	require.Equal(t, lowPriorityChannel.Id, channel.Id)
+	require.Equal(t, middlePriorityChannel.Id, channel.Id)
+}
+
+func TestGetChannelCompactFallbackExcludesFailedChannelBeforePrioritySelection(t *testing.T) {
+	truncateTables(t)
+
+	highPriority := int64(10)
+	middlePriority := int64(5)
+	lowPriority := int64(0)
+	highPriorityChannel := insertCompactFallbackChannel(t, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled)
+	middlePriorityChannel := insertCompactFallbackChannel(t, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled)
+	lowPriorityChannel := insertCompactFallbackChannel(t, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled)
+	setChannelPriority(t, highPriorityChannel.Id, highPriority)
+	setChannelPriority(t, middlePriorityChannel.Id, middlePriority)
+	setChannelPriority(t, lowPriorityChannel.Id, lowPriority)
+	insertCompactFallbackAbility(t, highPriorityChannel.Id, &highPriority)
+	insertCompactFallbackAbility(t, middlePriorityChannel.Id, &middlePriority)
+	insertCompactFallbackAbility(t, lowPriorityChannel.Id, &lowPriority)
+
+	channel, err := GetChannel("default", ratio_setting.WithCompactModelSuffix("gpt-5.5"), 1, highPriorityChannel.Id)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	require.Equal(t, middlePriorityChannel.Id, channel.Id)
+}
+
+func TestGetRandomSatisfiedChannelCacheExcludesFailedChannelBeforePrioritySelection(t *testing.T) {
+	truncateTables(t)
+	oldMemoryCacheEnabled := common.MemoryCacheEnabled
+	t.Cleanup(func() {
+		common.MemoryCacheEnabled = oldMemoryCacheEnabled
+		channelSyncLock.Lock()
+		group2model2channels = nil
+		channelsIDM = nil
+		channelSyncLock.Unlock()
+	})
+
+	highPriority := int64(10)
+	middlePriority := int64(5)
+	lowPriority := int64(0)
+	highPriorityChannel := insertCompactFallbackChannel(t, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled)
+	middlePriorityChannel := insertCompactFallbackChannel(t, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled)
+	lowPriorityChannel := insertCompactFallbackChannel(t, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled)
+	setChannelPriority(t, highPriorityChannel.Id, highPriority)
+	setChannelPriority(t, middlePriorityChannel.Id, middlePriority)
+	setChannelPriority(t, lowPriorityChannel.Id, lowPriority)
+	insertCompactFallbackAbility(t, highPriorityChannel.Id, &highPriority)
+	insertCompactFallbackAbility(t, middlePriorityChannel.Id, &middlePriority)
+	insertCompactFallbackAbility(t, lowPriorityChannel.Id, &lowPriority)
+
+	common.MemoryCacheEnabled = true
+	InitChannelCache()
+
+	channel, err := GetRandomSatisfiedChannel("default", "gpt-5.5", 1, highPriorityChannel.Id)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	require.Equal(t, middlePriorityChannel.Id, channel.Id)
 }
 
 func TestIsChannelEnabledForGroupModelDBAllowsCompactAliasFromBaseModel(t *testing.T) {
@@ -158,4 +219,9 @@ func insertCompactFallbackAbility(t *testing.T, channelID int, priority *int64) 
 		Weight:    1,
 	}
 	require.NoError(t, DB.Create(&ability).Error)
+}
+
+func setChannelPriority(t *testing.T, channelID int, priority int64) {
+	t.Helper()
+	require.NoError(t, DB.Model(&Channel{}).Where("id = ?", channelID).Update("priority", priority).Error)
 }
