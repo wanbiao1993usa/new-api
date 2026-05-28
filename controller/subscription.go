@@ -138,14 +138,14 @@ func GetSubscriptionSelf(c *gin.Context) {
 		forcedBillingPreference = "wallet_only"
 	}
 
-	// Get user-visible subscriptions (including expired)
-	allSubscriptions, err := model.GetAllUserVisibleSubscriptions(userId)
+	// Get all subscriptions (including expired)
+	allSubscriptions, err := model.GetAllUserSubscriptions(userId)
 	if err != nil {
 		allSubscriptions = []model.SubscriptionSummary{}
 	}
 
-	// Get active user-visible subscriptions for backward compatibility
-	activeSubscriptions, err := model.GetAllActiveUserVisibleSubscriptions(userId)
+	// Get active subscriptions for backward compatibility
+	activeSubscriptions, err := model.GetAllActiveUserSubscriptions(userId)
 	if err != nil {
 		activeSubscriptions = []model.SubscriptionSummary{}
 	}
@@ -155,8 +155,8 @@ func GetSubscriptionSelf(c *gin.Context) {
 		"effective_group":              userGroup,
 		"effective_group_billing_type": groupBillingType,
 		"forced_billing_preference":    forcedBillingPreference,
-		"subscriptions":                activeSubscriptions, // active visible subscriptions
-		"all_subscriptions":            allSubscriptions,    // visible subscriptions including expired
+		"subscriptions":                activeSubscriptions, // active subscriptions
+		"all_subscriptions":            allSubscriptions,    // subscriptions including expired
 	})
 }
 

@@ -73,7 +73,7 @@ func getSubscriptionModelLimitUsed(t *testing.T, subId int, modelName string) in
 	return usage.AmountUsed
 }
 
-func TestGetAllUserVisibleSubscriptionsFiltersHiddenPlansOnlyForListing(t *testing.T) {
+func TestGetAllUserSubscriptionsIncludesHiddenPlansForSelfState(t *testing.T) {
 	truncateTables(t)
 
 	insertSubscriptionLimitUser(t, 514)
@@ -86,17 +86,19 @@ func TestGetAllUserVisibleSubscriptionsFiltersHiddenPlansOnlyForListing(t *testi
 	insertActiveUserSubscriptionForLimitTest(t, 716, 514, visiblePlan.Id, 1000, 0)
 	insertActiveUserSubscriptionForLimitTest(t, 717, 514, hiddenPlan.Id, 1000, 0)
 
-	allVisible, err := GetAllUserVisibleSubscriptions(514)
+	allSubscriptions, err := GetAllUserSubscriptions(514)
 	require.NoError(t, err)
-	require.Len(t, allVisible, 1)
-	require.NotNil(t, allVisible[0].Plan)
-	assert.Equal(t, visiblePlan.Id, allVisible[0].Plan.Id)
+	require.Len(t, allSubscriptions, 2)
+	require.NotNil(t, allSubscriptions[0].Plan)
+	require.NotNil(t, allSubscriptions[1].Plan)
+	assert.ElementsMatch(t, []int{visiblePlan.Id, hiddenPlan.Id}, []int{allSubscriptions[0].Plan.Id, allSubscriptions[1].Plan.Id})
 
-	activeVisible, err := GetAllActiveUserVisibleSubscriptions(514)
+	activeSubscriptions, err := GetAllActiveUserSubscriptions(514)
 	require.NoError(t, err)
-	require.Len(t, activeVisible, 1)
-	require.NotNil(t, activeVisible[0].Plan)
-	assert.Equal(t, visiblePlan.Id, activeVisible[0].Plan.Id)
+	require.Len(t, activeSubscriptions, 2)
+	require.NotNil(t, activeSubscriptions[0].Plan)
+	require.NotNil(t, activeSubscriptions[1].Plan)
+	assert.ElementsMatch(t, []int{visiblePlan.Id, hiddenPlan.Id}, []int{activeSubscriptions[0].Plan.Id, activeSubscriptions[1].Plan.Id})
 
 	hasActive, err := HasActiveUserSubscription(514)
 	require.NoError(t, err)

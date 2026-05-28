@@ -13,7 +13,7 @@ func setupSubscriptionControllerTestDB(t *testing.T) {
 	t.Helper()
 
 	db := openTokenControllerTestDB(t)
-	if err := db.AutoMigrate(&model.User{}, &model.SubscriptionPlan{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.SubscriptionPlan{}, &model.UserSubscription{}); err != nil {
 		t.Fatalf("failed to migrate subscription plan table: %v", err)
 	}
 }
@@ -56,6 +56,26 @@ func seedSubscriptionControllerPlan(t *testing.T, id int, title string, enabled 
 		t.Fatalf("failed to set subscription plan booleans: %v", err)
 	}
 	model.InvalidateSubscriptionPlanCache(id)
+}
+
+func seedSubscriptionControllerActiveSubscription(t *testing.T, id int, userId int, planId int) {
+	t.Helper()
+
+	now := common.GetTimestamp()
+	subscription := &model.UserSubscription{
+		Id:          id,
+		UserId:      userId,
+		PlanId:      planId,
+		AmountTotal: 1000,
+		AmountUsed:  0,
+		StartTime:   now - 60,
+		EndTime:     now + 3600,
+		Status:      "active",
+		Source:      "admin",
+	}
+	if err := model.DB.Create(subscription).Error; err != nil {
+		t.Fatalf("failed to seed user subscription: %v", err)
+	}
 }
 
 func TestAdminCreateSubscriptionPlanPreservesExplicitFalseBooleans(t *testing.T) {
@@ -158,6 +178,38 @@ func TestGetSubscriptionPlansReturnsOnlyEnabledUserVisiblePlans(t *testing.T) {
 	}
 	if plans[0].Plan.Id != 101 {
 		t.Fatalf("expected visible plan id 101, got %d", plans[0].Plan.Id)
+	}
+}
+
+func TestGetSubscriptionSelfReturnsHiddenActiveSubscriptions(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	seedSubscriptionControllerUser(t, 1)
+	seedSubscriptionControllerPlan(t, 301, "hidden active plan", true, false)
+	seedSubscriptionControllerActiveSubscription(t, 401, 1, 301)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/subscription/self", nil, 1)
+
+	GetSubscriptionSelf(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected self success, got message: %s", response.Message)
+	}
+	var data struct {
+		Subscriptions    []model.SubscriptionSummary `json:"subscriptions"`
+		AllSubscriptions []model.SubscriptionSummary `json:"all_subscriptions"`
+	}
+	if err := common.Unmarshal(response.Data, &data); err != nil {
+		t.Fatalf("failed to decode subscription self response: %v", err)
+	}
+	if len(data.Subscriptions) != 1 {
+		t.Fatalf("expected hidden active subscription to stay in active self state, got %d", len(data.Subscriptions))
+	}
+	if data.Subscriptions[0].Plan == nil || data.Subscriptions[0].Plan.Id != 301 {
+		t.Fatalf("expected hidden plan 301 in active self state, got %#v", data.Subscriptions[0].Plan)
+	}
+	if len(data.AllSubscriptions) != 1 {
+		t.Fatalf("expected hidden subscription to stay in all self state, got %d", len(data.AllSubscriptions))
 	}
 }
 
