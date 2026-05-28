@@ -234,12 +234,14 @@ func bindAdminUpsertSubscriptionPlanRequest(c *gin.Context, req *AdminUpsertSubs
 	if err := common.Unmarshal(body, req); err != nil {
 		return adminUpsertSubscriptionPlanProvidedFields{}, err
 	}
-	var raw map[string]map[string]interface{}
+	var raw struct {
+		Plan map[string]interface{} `json:"plan"`
+	}
 	provided := adminUpsertSubscriptionPlanProvidedFields{}
 	if err := common.Unmarshal(body, &raw); err == nil {
-		if planRaw, ok := raw["plan"]; ok {
-			_, provided.Enabled = planRaw["enabled"]
-			_, provided.UserVisible = planRaw["user_visible"]
+		if raw.Plan != nil {
+			_, provided.Enabled = raw.Plan["enabled"]
+			_, provided.UserVisible = raw.Plan["user_visible"]
 		}
 	}
 	return provided, nil

@@ -83,6 +83,7 @@ func TestAdminCreateSubscriptionPlanPreservesExplicitFalseBooleans(t *testing.T)
 	setupSubscriptionControllerTestDB(t)
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/subscription/admin/plans", map[string]any{
+		"id": 123,
 		"plan": map[string]any{
 			"title":          "hidden disabled plan",
 			"price_amount":   1,
