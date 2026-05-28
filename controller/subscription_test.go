@@ -2,6 +2,7 @@ package controller
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -210,6 +211,53 @@ func TestGetSubscriptionSelfReturnsHiddenActiveSubscriptions(t *testing.T) {
 	}
 	if len(data.AllSubscriptions) != 1 {
 		t.Fatalf("expected hidden subscription to stay in all self state, got %d", len(data.AllSubscriptions))
+	}
+}
+
+func TestSubscriptionPaymentRejectsHiddenPlans(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	seedSubscriptionControllerPlan(t, 501, "hidden checkout plan", true, false)
+
+	tests := []struct {
+		name    string
+		target  string
+		body    map[string]any
+		handler func(*gin.Context)
+	}{
+		{
+			name:    "stripe",
+			target:  "/api/subscription/stripe/pay",
+			body:    map[string]any{"plan_id": 501},
+			handler: SubscriptionRequestStripePay,
+		},
+		{
+			name:    "epay",
+			target:  "/api/subscription/epay/pay",
+			body:    map[string]any{"plan_id": 501, "payment_method": "alipay"},
+			handler: SubscriptionRequestEpay,
+		},
+		{
+			name:    "creem",
+			target:  "/api/subscription/creem/pay",
+			body:    map[string]any{"plan_id": 501},
+			handler: SubscriptionRequestCreemPay,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, recorder := newAuthenticatedContext(t, http.MethodPost, tt.target, tt.body, 1)
+
+			tt.handler(ctx)
+
+			response := decodeAPIResponse(t, recorder)
+			if response.Success {
+				t.Fatalf("expected hidden plan purchase to fail")
+			}
+			if !strings.Contains(response.Message, "不可购买") {
+				t.Fatalf("expected hidden plan purchase message, got %q", response.Message)
+			}
+		})
 	}
 }
 

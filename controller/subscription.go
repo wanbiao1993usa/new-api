@@ -24,6 +24,22 @@ type BillingPreferenceRequest struct {
 	BillingPreference string `json:"billing_preference"`
 }
 
+func ensureSubscriptionPlanPurchasable(c *gin.Context, plan *model.SubscriptionPlan) bool {
+	if plan == nil {
+		common.ApiErrorMsg(c, "套餐不存在")
+		return false
+	}
+	if !plan.Enabled {
+		common.ApiErrorMsg(c, "套餐未启用")
+		return false
+	}
+	if !plan.UserVisible {
+		common.ApiErrorMsg(c, "套餐不可购买")
+		return false
+	}
+	return true
+}
+
 // ---- User APIs ----
 
 func GetSubscriptionPlans(c *gin.Context) {
