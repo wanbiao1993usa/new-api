@@ -59,7 +59,7 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 		return true
 	}
 
-	lowerMessage := strings.ToLower(err.Error())
+	lowerMessage := strings.ToLower(err.GetAutoDisableMessage())
 	search, _ := AcSearch(lowerMessage, operation_setting.AutomaticDisableKeywords, true)
 	return search
 }

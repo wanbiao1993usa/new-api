@@ -1,8 +1,14 @@
 package service
 
 import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/stretchr/testify/require"
 )
@@ -54,4 +60,56 @@ func TestResetStatusCode(t *testing.T) {
 			require.Equal(t, tc.expectedCode, newAPIError.StatusCode)
 		})
 	}
+}
+
+func TestRelayErrorHandlerNormalizesUpstreamInsufficientBalance(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusForbidden,
+		Body: io.NopCloser(strings.NewReader(
+			`{"error":{"message":"Your credit balance is too low","type":"upstream_error","code":"insufficient_quota"}}`,
+		)),
+	}
+
+	err := RelayErrorHandler(context.Background(), resp, true)
+
+	require.NotNil(t, err)
+	require.Equal(t, types.ErrorCodeUpstreamInsufficientBalance, err.GetErrorCode())
+	require.Equal(t, types.UpstreamInsufficientBalanceMessage, err.Error())
+	require.NotContains(t, err.Error(), "credit balance")
+}
+
+func TestRelayErrorHandlerPreservesAutoDisableSignalAfterBalanceMasking(t *testing.T) {
+	oldAutomaticDisableChannelEnabled := common.AutomaticDisableChannelEnabled
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = oldAutomaticDisableChannelEnabled
+	})
+	common.AutomaticDisableChannelEnabled = true
+
+	resp := &http.Response{
+		StatusCode: http.StatusForbidden,
+		Body:       io.NopCloser(strings.NewReader("Your credit balance is too low")),
+	}
+
+	err := RelayErrorHandler(context.Background(), resp, true)
+
+	require.NotNil(t, err)
+	require.Equal(t, types.ErrorCodeUpstreamInsufficientBalance, err.GetErrorCode())
+	require.Equal(t, types.UpstreamInsufficientBalanceMessage, err.Error())
+	require.True(t, ShouldDisableChannel(err))
+	require.NotContains(t, err.Error(), "credit balance")
+}
+
+func TestTaskErrorFromAPIErrorMarksPreConsumeErrorsLocal(t *testing.T) {
+	apiErr := types.NewErrorWithStatusCode(
+		errors.New("订阅总额度不足"),
+		types.ErrorCodeInsufficientUserQuota,
+		http.StatusForbidden,
+		types.ErrOptionWithSkipRetry(),
+	)
+
+	taskErr := TaskErrorFromAPIError(apiErr)
+
+	require.NotNil(t, taskErr)
+	require.True(t, taskErr.LocalError)
+	require.Equal(t, string(types.ErrorCodeInsufficientUserQuota), taskErr.Code)
 }

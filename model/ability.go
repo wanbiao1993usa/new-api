@@ -114,12 +114,16 @@ func distinctAbilityModels(abilities []AbilityWithChannel) []string {
 	return models
 }
 
-func getPriority(group string, model string, retry int) (int, error) {
+func getPriority(group string, model string, retry int, excludeChannelIds ...int) (int, error) {
 
 	var priorities []int
-	err := DB.Model(&Ability{}).
+	query := DB.Model(&Ability{}).
 		Select("DISTINCT(priority)").
-		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
+		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
+	if len(excludeChannelIds) > 0 {
+		query = query.Where("channel_id NOT IN ?", excludeChannelIds)
+	}
+	err := query.
 		Order("priority DESC").              // 按优先级降序排序
 		Pluck("priority", &priorities).Error // Pluck用于将查询的结果直接扫描到一个切片中
 
@@ -135,6 +139,13 @@ func getPriority(group string, model string, retry int) (int, error) {
 
 	// 确定要使用的优先级
 	var priorityToUse int
+	if len(excludeChannelIds) > 0 {
+		excludedCount, err := countExcludedAbilityChannels(group, model, excludeChannelIds...)
+		if err != nil {
+			return 0, err
+		}
+		retry = normalizeRetryAfterExclusions(retry, excludedCount)
+	}
 	if retry >= len(priorities) {
 		// 如果重试次数大于优先级数，则使用最小的优先级
 		priorityToUse = priorities[len(priorities)-1]
@@ -144,22 +155,31 @@ func getPriority(group string, model string, retry int) (int, error) {
 	return priorityToUse, nil
 }
 
-func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
+func getChannelQuery(group string, model string, retry int, excludeChannelIds ...int) (*gorm.DB, error) {
 	maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
+	if len(excludeChannelIds) > 0 {
+		maxPrioritySubQuery = maxPrioritySubQuery.Where("channel_id NOT IN ?", excludeChannelIds)
+	}
 	channelQuery := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery)
+	if len(excludeChannelIds) > 0 {
+		channelQuery = channelQuery.Where("channel_id NOT IN ?", excludeChannelIds)
+	}
 	if retry != 0 {
-		priority, err := getPriority(group, model, retry)
+		priority, err := getPriority(group, model, retry, excludeChannelIds...)
 		if err != nil {
 			return nil, err
 		} else {
 			channelQuery = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = ?", group, model, true, priority)
+			if len(excludeChannelIds) > 0 {
+				channelQuery = channelQuery.Where("channel_id NOT IN ?", excludeChannelIds)
+			}
 		}
 	}
 
 	return channelQuery, nil
 }
 
-func getResponsesCompactFallbackAbilities(group string, model string, retry int) ([]Ability, error) {
+func getResponsesCompactFallbackAbilities(group string, model string, retry int, excludeChannelIds ...int) ([]Ability, error) {
 	if !ratio_setting.IsCompactModelName(model) {
 		return nil, nil
 	}
@@ -169,7 +189,8 @@ func getResponsesCompactFallbackAbilities(group string, model string, retry int)
 	}
 
 	var abilities []Ability
-	err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, baseModel, true).Find(&abilities).Error
+	query := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, baseModel, true)
+	err := query.Find(&abilities).Error
 	if err != nil || len(abilities) == 0 {
 		return nil, err
 	}
@@ -197,8 +218,17 @@ func getResponsesCompactFallbackAbilities(group string, model string, retry int)
 
 	priorities := make(map[int]struct{})
 	filtered := make([]Ability, 0, len(abilities))
+	excludedCount := 0
+	excludedChannelMap := make(map[int]struct{}, len(excludeChannelIds))
+	for _, channelId := range excludeChannelIds {
+		excludedChannelMap[channelId] = struct{}{}
+	}
 	for _, ability := range abilities {
 		if _, ok := supportedChannels[ability.ChannelId]; !ok {
+			continue
+		}
+		if _, ok := excludedChannelMap[ability.ChannelId]; ok {
+			excludedCount++
 			continue
 		}
 		filtered = append(filtered, ability)
@@ -217,6 +247,7 @@ func getResponsesCompactFallbackAbilities(group string, model string, retry int)
 		sortedPriorities = append(sortedPriorities, priority)
 	}
 	sort.Sort(sort.Reverse(sort.IntSlice(sortedPriorities)))
+	retry = normalizeRetryAfterExclusions(retry, excludedCount)
 	if retry >= len(sortedPriorities) {
 		retry = len(sortedPriorities) - 1
 	}
@@ -235,13 +266,39 @@ func getResponsesCompactFallbackAbilities(group string, model string, retry int)
 	return targetAbilities, nil
 }
 
-func GetChannel(group string, model string, retry int) (*Channel, error) {
+func countExcludedAbilityChannels(group string, model string, excludeChannelIds ...int) (int, error) {
+	if len(excludeChannelIds) == 0 {
+		return 0, nil
+	}
+	var count int64
+	err := DB.Model(&Ability{}).
+		Where(commonGroupCol+" = ? and model = ? and enabled = ? and channel_id IN ?", group, model, true, excludeChannelIds).
+		Distinct("channel_id").
+		Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
+func normalizeRetryAfterExclusions(retry int, excludedCount int) int {
+	if excludedCount <= 0 {
+		return retry
+	}
+	retry -= excludedCount
+	if retry < 0 {
+		return 0
+	}
+	return retry
+}
+
+func GetChannel(group string, model string, retry int, excludeChannelIds ...int) (*Channel, error) {
 	var abilities []Ability
 
 	var err error = nil
-	channelQuery, err := getChannelQuery(group, model, retry)
+	channelQuery, err := getChannelQuery(group, model, retry, excludeChannelIds...)
 	if err != nil {
-		abilities, fallbackErr := getResponsesCompactFallbackAbilities(group, model, retry)
+		abilities, fallbackErr := getResponsesCompactFallbackAbilities(group, model, retry, excludeChannelIds...)
 		if fallbackErr != nil {
 			return nil, fallbackErr
 		}
@@ -259,10 +316,23 @@ func GetChannel(group string, model string, retry int) (*Channel, error) {
 		}
 	}
 	if len(abilities) == 0 {
-		abilities, err = getResponsesCompactFallbackAbilities(group, model, retry)
+		abilities, err = getResponsesCompactFallbackAbilities(group, model, retry, excludeChannelIds...)
 		if err != nil {
 			return nil, err
 		}
+	}
+	if len(excludeChannelIds) > 0 && len(abilities) > 0 {
+		excluded := make(map[int]struct{}, len(excludeChannelIds))
+		for _, channelId := range excludeChannelIds {
+			excluded[channelId] = struct{}{}
+		}
+		filteredAbilities := make([]Ability, 0, len(abilities))
+		for _, ability := range abilities {
+			if _, ok := excluded[ability.ChannelId]; !ok {
+				filteredAbilities = append(filteredAbilities, ability)
+			}
+		}
+		abilities = filteredAbilities
 	}
 	channel := Channel{}
 	if len(abilities) > 0 {

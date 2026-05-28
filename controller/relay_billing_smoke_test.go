@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -113,6 +114,44 @@ func TestRelayBillingSmokeWalletOnlyUsesWalletEvenWithActiveSubscription(t *test
 	require.Equal(t, ratio_setting.GroupBillingTypeWalletOnly, other["billing_group_type"])
 	_, hasSubscriptionModel := other["subscription_model_name"]
 	require.False(t, hasSubscriptionModel)
+}
+
+func TestRelaySmokeUpstreamInsufficientBalanceFallsBackToNextChannel(t *testing.T) {
+	oldRetryTimes := common.RetryTimes
+	oldErrorLogEnabled := constant.ErrorLogEnabled
+	t.Cleanup(func() {
+		common.RetryTimes = oldRetryTimes
+		constant.ErrorLogEnabled = oldErrorLogEnabled
+	})
+	common.RetryTimes = 1
+	constant.ErrorLogEnabled = true
+
+	failingUpstream, failingHits := newOpenAIInsufficientBalanceSmokeUpstream(t)
+	successUpstream, successHits := newOpenAISmokeUpstream(t)
+	env := setupRelayBillingSmokeEnv(t)
+
+	user, token := createRelaySmokeUser(t, env.db, "wallet-only", "fallbacksmoke", "subscription_first", 100_000)
+	failingChannel := createRelaySmokeChannelWithPriority(t, "wallet-only", failingUpstream.URL, relaySmokeModel, 10)
+	successChannel := createRelaySmokeChannelWithPriority(t, "wallet-only", successUpstream.URL, relaySmokeModel, 0)
+
+	recorder := performRelaySmokeRequest(t, env.router, token.Key, relaySmokeModel)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.Equal(t, int32(1), failingHits.Load())
+	require.Equal(t, int32(1), successHits.Load())
+	require.NotContains(t, recorder.Body.String(), "AiMaMi")
+	require.NotContains(t, recorder.Body.String(), "insufficient balance")
+	require.NotContains(t, recorder.Body.String(), "127.0.0.1")
+
+	var errLog model.Log
+	require.NoError(t, env.db.Where("user_id = ? AND type = ?", user.Id, model.LogTypeError).Order("id desc").First(&errLog).Error)
+	require.Equal(t, failingChannel.Id, errLog.ChannelId)
+	require.Contains(t, errLog.Content, types.UpstreamInsufficientBalanceMessage)
+	require.NotContains(t, errLog.Content, "AiMaMi")
+	require.NotContains(t, errLog.Content, "insufficient balance")
+	require.NotContains(t, errLog.Content, "127.0.0.1")
+
+	consumeLog, _ := loadRelaySmokeConsumeLog(t, env.db, user.Id)
+	require.Equal(t, successChannel.Id, consumeLog.ChannelId)
 }
 
 func TestRelayBillingSmokeStreamChatCompletionUsesSubscription(t *testing.T) {
@@ -534,6 +573,27 @@ func newOpenAISmokeUpstream(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	return server, hits
 }
 
+func newOpenAIInsufficientBalanceSmokeUpstream(t *testing.T) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+
+	hits := &atomic.Int32{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/v1/chat/completions", r.URL.Path)
+
+		var upstreamRequest map[string]any
+		require.NoError(t, common.DecodeJson(r.Body, &upstreamRequest))
+		require.Equal(t, relaySmokeModel, upstreamRequest["model"])
+
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte("unexpected status 403 Forbidden: insufficient balance AiMaMi提示： 上游账户余额可能不足，建议到上游平台确认充值状态, url: http://127.0.0.1:25817/codex/router/v1/responses, cf-ray: a021ad2fa96dd480-NRT"))
+	}))
+	t.Cleanup(server.Close)
+	return server, hits
+}
+
 func newOpenAIStreamSmokeUpstream(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 
@@ -668,9 +728,13 @@ func createRelaySmokeChannel(t *testing.T, group, baseURL string) *model.Channel
 }
 
 func createRelaySmokeChannelWithModels(t *testing.T, group, baseURL, models string) *model.Channel {
+	return createRelaySmokeChannelWithPriority(t, group, baseURL, models, 0)
+}
+
+func createRelaySmokeChannelWithPriority(t *testing.T, group, baseURL, models string, priorityValue int64) *model.Channel {
 	t.Helper()
 
-	priority := int64(0)
+	priority := priorityValue
 	weight := uint(0)
 	autoBan := 0
 	channel := &model.Channel{

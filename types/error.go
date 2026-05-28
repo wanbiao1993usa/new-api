@@ -83,9 +83,12 @@ const (
 	ErrorCodeUpdateDataError ErrorCode = "update_data_error"
 
 	// quota error
-	ErrorCodeInsufficientUserQuota      ErrorCode = "insufficient_user_quota"
-	ErrorCodePreConsumeTokenQuotaFailed ErrorCode = "pre_consume_token_quota_failed"
+	ErrorCodeInsufficientUserQuota       ErrorCode = "insufficient_user_quota"
+	ErrorCodePreConsumeTokenQuotaFailed  ErrorCode = "pre_consume_token_quota_failed"
+	ErrorCodeUpstreamInsufficientBalance ErrorCode = "upstream_insufficient_balance"
 )
+
+const UpstreamInsufficientBalanceMessage = "上游渠道余额不足"
 
 type NewAPIError struct {
 	Err            error
@@ -96,6 +99,7 @@ type NewAPIError struct {
 	errorCode      ErrorCode
 	StatusCode     int
 	Metadata       json.RawMessage
+	autoDisableMsg string
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.
@@ -175,6 +179,42 @@ func (e *NewAPIError) MaskSensitiveErrorWithStatusCode() string {
 
 func (e *NewAPIError) SetMessage(message string) {
 	e.Err = errors.New(message)
+}
+
+func (e *NewAPIError) SetLocalMessage(message string, errorCode ErrorCode) {
+	if e == nil {
+		return
+	}
+	e.Err = errors.New(message)
+	e.errorCode = errorCode
+	switch relayError := e.RelayError.(type) {
+	case OpenAIError:
+		relayError.Message = message
+		relayError.Type = string(ErrorTypeUpstreamError)
+		relayError.Code = errorCode
+		e.RelayError = relayError
+	case ClaudeError:
+		relayError.Message = message
+		relayError.Type = string(errorCode)
+		e.RelayError = relayError
+	}
+}
+
+func (e *NewAPIError) SetAutoDisableMessage(message string) {
+	if e == nil || message == "" {
+		return
+	}
+	e.autoDisableMsg = message
+}
+
+func (e *NewAPIError) GetAutoDisableMessage() string {
+	if e == nil {
+		return ""
+	}
+	if e.autoDisableMsg != "" {
+		return e.autoDisableMsg
+	}
+	return e.Error()
 }
 
 func (e *NewAPIError) ToOpenAIError() OpenAIError {
@@ -368,6 +408,63 @@ func IsChannelError(err *NewAPIError) bool {
 		return false
 	}
 	return strings.HasPrefix(string(err.errorCode), "channel:")
+}
+
+func IsUpstreamInsufficientBalanceError(err *NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	return err.errorCode == ErrorCodeUpstreamInsufficientBalance
+}
+
+func NormalizeUpstreamInsufficientBalanceError(err *NewAPIError) *NewAPIError {
+	if err == nil {
+		return nil
+	}
+	if err.errorCode == ErrorCodePreConsumeTokenQuotaFailed ||
+		(err.errorCode == ErrorCodeInsufficientUserQuota && err.errorType == ErrorTypeNewAPIError) {
+		return err
+	}
+	if IsUpstreamInsufficientBalanceMessage(err.StatusCode, err.Error()) {
+		err.SetAutoDisableMessage(err.Error())
+		err.SetLocalMessage(UpstreamInsufficientBalanceMessage, ErrorCodeUpstreamInsufficientBalance)
+	}
+	return err
+}
+
+func IsUpstreamInsufficientBalanceMessage(statusCode int, message string) bool {
+	if statusCode >= 200 && statusCode < 300 {
+		return false
+	}
+	message = strings.ToLower(message)
+	if message == "" {
+		return false
+	}
+	keywords := []string{
+		"用户额度不足",
+		"额度不足",
+		"余额不足",
+		"剩余额度",
+		"账户余额",
+		"账号余额",
+		"可用余额",
+		"欠费",
+		"insufficient_user_quota",
+		"insufficient quota",
+		"quota insufficient",
+		"insufficient balance",
+		"balance insufficient",
+		"remaining quota",
+		"credit balance is too low",
+		"exceeded your current quota",
+		"billing hard limit",
+	}
+	for _, keyword := range keywords {
+		if strings.Contains(message, strings.ToLower(keyword)) {
+			return true
+		}
+	}
+	return false
 }
 
 func IsSkipRetryError(err *NewAPIError) bool {

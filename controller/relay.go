@@ -191,7 +191,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
-			newAPIError = channelErr
+			if types.IsUpstreamInsufficientBalanceError(relayInfo.LastError) {
+				newAPIError = relayInfo.LastError
+			} else {
+				newAPIError = channelErr
+			}
 			break
 		}
 
@@ -225,9 +229,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
+		newAPIError = types.NormalizeUpstreamInsufficientBalanceError(newAPIError)
 		relayInfo.LastError = newAPIError
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+
+		if types.IsUpstreamInsufficientBalanceError(newAPIError) {
+			retryParam.ExcludeChannelIds = append(retryParam.ExcludeChannelIds, channel.Id)
+		}
 
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break
@@ -328,13 +337,13 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if types.IsSkipRetryError(openaiErr) {
 		return false
 	}
-	if isUpstreamInsufficientQuotaError(openaiErr) {
+	if _, ok := c.Get("specific_channel_id"); ok {
+		return false
+	}
+	if types.IsUpstreamInsufficientBalanceError(openaiErr) || isUpstreamInsufficientQuotaError(openaiErr) {
 		return retryTimes > 0
 	}
 	if retryTimes <= 0 {
-		return false
-	}
-	if _, ok := c.Get("specific_channel_id"); ok {
 		return false
 	}
 	code := openaiErr.StatusCode
@@ -351,30 +360,10 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 }
 
 func isUpstreamInsufficientQuotaError(err *types.NewAPIError) bool {
-	if err == nil || err.StatusCode != http.StatusForbidden {
+	if err == nil {
 		return false
 	}
-	message := strings.ToLower(err.Error())
-	if message == "" {
-		return false
-	}
-	keywords := []string{
-		"用户额度不足",
-		"剩余额度",
-		"余额不足",
-		"insufficient_user_quota",
-		"insufficient quota",
-		"quota insufficient",
-		"insufficient balance",
-		"balance insufficient",
-		"remaining quota",
-	}
-	for _, keyword := range keywords {
-		if strings.Contains(message, strings.ToLower(keyword)) {
-			return true
-		}
-	}
-	return false
+	return types.IsUpstreamInsufficientBalanceMessage(err.StatusCode, err.Error())
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
@@ -382,8 +371,12 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
 	if service.ShouldDisableChannel(err) && channelError.AutoBan {
+		reason := err.ErrorWithStatusCode()
+		if types.IsUpstreamInsufficientBalanceError(err) {
+			reason = types.UpstreamInsufficientBalanceMessage
+		}
 		gopool.Go(func() {
-			service.DisableChannel(channelError, err.ErrorWithStatusCode())
+			service.DisableChannel(channelError, reason)
 		})
 	}
 
@@ -553,7 +546,11 @@ func RelayTask(c *gin.Context) {
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
-				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
+				if isTaskUpstreamInsufficientBalanceError(taskErr) {
+					taskErr = service.TaskErrorWrapper(taskErr.Error, taskErr.Code, taskErr.StatusCode)
+				} else {
+					taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
+				}
 				break
 			}
 		}
@@ -575,11 +572,19 @@ func RelayTask(c *gin.Context) {
 			break
 		}
 
+		upstreamBalanceAutoDisableMessage := normalizeTaskUpstreamInsufficientBalanceError(taskErr)
+		if upstreamBalanceAutoDisableMessage != "" {
+			retryParam.ExcludeChannelIds = append(retryParam.ExcludeChannelIds, channel.Id)
+		}
+
 		if !taskErr.LocalError {
+			newAPIError := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
+			newAPIError = types.NormalizeUpstreamInsufficientBalanceError(newAPIError)
+			newAPIError.SetAutoDisableMessage(upstreamBalanceAutoDisableMessage)
 			processChannelError(c,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
-				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
+				newAPIError)
 		}
 
 		if !shouldRetryTaskRelay(c, channel.Id, taskErr, common.RetryTimes-retryParam.GetRetry()) {
@@ -648,6 +653,9 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 	if _, ok := c.Get("specific_channel_id"); ok {
 		return false
 	}
+	if isTaskUpstreamInsufficientBalanceError(taskErr) {
+		return true
+	}
 	if taskErr.StatusCode == http.StatusTooManyRequests {
 		return true
 	}
@@ -675,4 +683,30 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 		return false
 	}
 	return true
+}
+
+func normalizeTaskUpstreamInsufficientBalanceError(taskErr *dto.TaskError) string {
+	if !isTaskUpstreamInsufficientBalanceError(taskErr) {
+		return ""
+	}
+	autoDisableMessage := taskErr.Message
+	if taskErr.Error != nil && taskErr.Error.Error() != "" {
+		autoDisableMessage = taskErr.Error.Error()
+	}
+	taskErr.Code = string(types.ErrorCodeUpstreamInsufficientBalance)
+	taskErr.Message = types.UpstreamInsufficientBalanceMessage
+	taskErr.Error = errors.New(types.UpstreamInsufficientBalanceMessage)
+	return autoDisableMessage
+}
+
+func isTaskUpstreamInsufficientBalanceError(taskErr *dto.TaskError) bool {
+	if taskErr == nil || taskErr.LocalError {
+		return false
+	}
+	if taskErr.Code == string(types.ErrorCodeInsufficientUserQuota) ||
+		taskErr.Code == string(types.ErrorCodePreConsumeTokenQuotaFailed) {
+		return false
+	}
+	return taskErr.Code == string(types.ErrorCodeUpstreamInsufficientBalance) ||
+		types.IsUpstreamInsufficientBalanceMessage(taskErr.StatusCode, taskErr.Message)
 }
