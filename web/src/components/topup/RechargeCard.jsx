@@ -43,8 +43,7 @@ import {
   TrendingUp,
   Receipt,
   Sparkles,
-  ExternalLink,
-  AlertTriangle,
+  Users,
 } from 'lucide-react';
 import { IconGift } from '@douyinfe/semi-icons';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
@@ -83,7 +82,7 @@ const RechargeCard = ({
   isSubmitting,
   topUpLink,
   openTopUpLink,
-  openUnlimitedPlanLink,
+  afterSalesQRCode,
   userState,
   renderQuota,
   statusLoading,
@@ -569,92 +568,50 @@ const RechargeCard = ({
       <div
         className='w-full rounded-xl border px-4 py-4 shadow-sm'
         style={{
-          borderColor: '#f97316',
+          borderColor: '#16a34a',
           background:
-            'linear-gradient(135deg, rgba(255,247,237,0.98) 0%, rgba(254,226,226,0.98) 100%)',
+            'linear-gradient(135deg, rgba(240,253,244,0.98) 0%, rgba(236,253,245,0.98) 100%)',
         }}
       >
-        <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>
-          <div className='flex items-start gap-3'>
+        <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
+          <div className='flex min-w-0 items-start gap-3'>
             <div
               className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full'
-              style={{ background: '#ea580c', color: '#fff' }}
+              style={{ background: '#16a34a', color: '#fff' }}
             >
-              <Sparkles size={20} />
+              <Users size={20} />
             </div>
             <div className='min-w-0'>
               <div
                 className='text-base font-semibold'
-                style={{ color: '#9a3412' }}
+                style={{ color: '#14532d' }}
               >
-                {t('需要无限流量套餐？')}
+                {t('官方群二维码')}
               </div>
-              <div className='text-sm leading-6' style={{ color: '#7c2d12' }}>
-                {t('如果想要使用无限流量的套餐，请在淘宝联系作者。')}
-              </div>
-              <div
-                className='mt-2 flex max-w-full items-start gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm'
-                style={{
-                  borderColor: '#dc2626',
-                  background: '#fee2e2',
-                  color: '#991b1b',
-                }}
-              >
-                <AlertTriangle size={16} className='mt-0.5 shrink-0' />
-                <span>{t('购买后：一个月内无限流量，一个月后清零。')}</span>
+              <div className='text-sm leading-6' style={{ color: '#166534' }}>
+                {t(
+                  '所有咨询工作统一在官方群里面处理，淘宝客服将不再提供答疑服务。',
+                )}
               </div>
             </div>
           </div>
-          <button
-            type='button'
-            onClick={openUnlimitedPlanLink}
-            className='inline-flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-red-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 self-start sm:self-auto'
-          >
-            <ExternalLink size={16} className='mr-2' />
-            {t('购买无限流量套餐')}
-          </button>
-        </div>
-      </div>
-
-      <div
-        className='w-full rounded-xl border px-4 py-4 shadow-sm'
-        style={{
-          borderColor: '#2563eb',
-          background:
-            'linear-gradient(135deg, rgba(239,246,255,0.98) 0%, rgba(219,234,254,0.98) 100%)',
-        }}
-      >
-        <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>
-          <div className='flex items-start gap-3'>
-            <div
-              className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full'
-              style={{ background: '#2563eb', color: '#fff' }}
-            >
-              <IconGift />
-            </div>
-            <div className='min-w-0'>
-              <div
-                className='text-base font-semibold'
-                style={{ color: '#1e3a8a' }}
-              >
-                {t('普通兑换码购买')}
+          <div className='flex w-full flex-col items-center gap-2 rounded-xl border border-emerald-100 bg-white p-3 shadow-sm sm:w-auto'>
+            {afterSalesQRCode ? (
+              <img
+                src={afterSalesQRCode}
+                alt={t('官方群二维码')}
+                loading='lazy'
+                className='h-40 w-40 rounded-lg object-contain'
+              />
+            ) : (
+              <div className='flex h-40 w-40 items-center justify-center rounded-lg bg-gray-50 px-3 text-center text-sm text-gray-500'>
+                {t('暂未配置官方群二维码')}
               </div>
-              <div className='text-sm leading-6' style={{ color: '#1e40af' }}>
-                {t('如果只是普通充值，请购买兑换码后在下方输入兑换。')}
-              </div>
-              <div className='text-sm leading-6' style={{ color: '#1e40af' }}>
-                {t('可以享受原价2折、0.8折等优惠渠道。')}
-              </div>
-            </div>
+            )}
+            <Text type='secondary' size='small'>
+              {t('扫码加入官方群')}
+            </Text>
           </div>
-          <button
-            type='button'
-            onClick={openTopUpLink}
-            className='inline-flex h-9 shrink-0 items-center justify-center rounded-lg border-0 bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 self-start sm:self-auto'
-          >
-            <ExternalLink size={16} className='mr-2' />
-            {t('购买兑换码')}
-          </button>
         </div>
       </div>
 
