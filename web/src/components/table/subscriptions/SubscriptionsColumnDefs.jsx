@@ -220,6 +220,28 @@ const renderEnabled = (text, record, t) => {
   );
 };
 
+const renderUserVisible = (text, record, t) => {
+  return text ? (
+    <Tag
+      color='white'
+      shape='circle'
+      type='light'
+      prefixIcon={<Badge dot type='success' />}
+    >
+      {t('用户可见')}
+    </Tag>
+  ) : (
+    <Tag
+      color='white'
+      shape='circle'
+      type='light'
+      prefixIcon={<Badge dot type='warning' />}
+    >
+      {t('用户隐藏')}
+    </Tag>
+  );
+};
+
 const renderTotalAmount = (text, record, t) => {
   const total = Number(record?.plan?.total_amount || 0);
   return (
@@ -283,9 +305,10 @@ const renderPaymentConfig = (text, record, t, enableEpay) => {
 const renderOperations = (
   text,
   record,
-  { openEdit, openUserUsage, setPlanEnabled, t },
+  { openEdit, openUserUsage, setPlanEnabled, setPlanUserVisible, t },
 ) => {
   const isEnabled = record?.plan?.enabled;
+  const isUserVisible = record?.plan?.user_visible;
 
   const handleToggle = () => {
     if (isEnabled) {
@@ -301,6 +324,26 @@ const renderOperations = (
         content: t('启用后套餐将在用户端展示。是否继续？'),
         centered: true,
         onOk: () => setPlanEnabled(record, true),
+      });
+    }
+  };
+
+  const handleUserVisibleToggle = () => {
+    if (isUserVisible) {
+      Modal.confirm({
+        title: t('确认隐藏'),
+        content: t(
+          '隐藏后用户端将不再展示该套餐，但现有订阅与计费不受影响。是否继续？',
+        ),
+        centered: true,
+        onOk: () => setPlanUserVisible(record, false),
+      });
+    } else {
+      Modal.confirm({
+        title: t('确认显示'),
+        content: t('显示后用户端将重新展示该套餐。是否继续？'),
+        centered: true,
+        onOk: () => setPlanUserVisible(record, true),
       });
     }
   };
@@ -337,6 +380,25 @@ const renderOperations = (
           {t('启用')}
         </Button>
       )}
+      {isUserVisible ? (
+        <Button
+          theme='light'
+          type='warning'
+          size='small'
+          onClick={handleUserVisibleToggle}
+        >
+          {t('隐藏')}
+        </Button>
+      ) : (
+        <Button
+          theme='light'
+          type='primary'
+          size='small'
+          onClick={handleUserVisibleToggle}
+        >
+          {t('显示')}
+        </Button>
+      )}
     </Space>
   );
 };
@@ -346,6 +408,7 @@ export const getSubscriptionsColumns = ({
   openEdit,
   openUserUsage,
   setPlanEnabled,
+  setPlanUserVisible,
   enableEpay,
 }) => {
   return [
@@ -397,6 +460,13 @@ export const getSubscriptionsColumns = ({
       render: (_, record) => renderEnabled(record?.plan?.enabled, record, t),
     },
     {
+      title: t('可见性'),
+      key: 'user_visible',
+      width: 90,
+      render: (_, record) =>
+        renderUserVisible(record?.plan?.user_visible, record, t),
+    },
+    {
       title: t('支付渠道'),
       width: 180,
       render: (text, record) =>
@@ -421,12 +491,13 @@ export const getSubscriptionsColumns = ({
       title: t('操作'),
       dataIndex: 'operate',
       fixed: 'right',
-      width: 220,
+      width: 280,
       render: (text, record) =>
         renderOperations(text, record, {
           openEdit,
           openUserUsage,
           setPlanEnabled,
+          setPlanUserVisible,
           t,
         }),
     },

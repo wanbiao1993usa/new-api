@@ -15,6 +15,7 @@ func insertSubscriptionAnalysisUser(t *testing.T, id int, username string) {
 		Id:       id,
 		Username: username,
 		Status:   common.UserStatusEnabled,
+		AffCode:  "sub-analysis-" + username,
 	}).Error)
 }
 

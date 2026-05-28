@@ -161,8 +161,9 @@ type SubscriptionPlan struct {
 	DurationValue int    `json:"duration_value" gorm:"type:int;not null;default:1"`
 	CustomSeconds int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
 
-	Enabled   bool `json:"enabled" gorm:"default:true"`
-	SortOrder int  `json:"sort_order" gorm:"type:int;default:0"`
+	Enabled     bool `json:"enabled" gorm:"default:true"`
+	UserVisible bool `json:"user_visible" gorm:"not null;default:true"`
+	SortOrder   int  `json:"sort_order" gorm:"type:int;default:0"`
 
 	StripePriceId  string `json:"stripe_price_id" gorm:"type:varchar(128);default:''"`
 	CreemProductId string `json:"creem_product_id" gorm:"type:varchar(128);default:''"`
@@ -858,6 +859,15 @@ func GetAllActiveUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	return buildSubscriptionSummaries(subs), nil
 }
 
+// GetAllActiveUserVisibleSubscriptions returns active subscriptions that should be listed to users.
+func GetAllActiveUserVisibleSubscriptions(userId int) ([]SubscriptionSummary, error) {
+	summaries, err := GetAllActiveUserSubscriptions(userId)
+	if err != nil {
+		return nil, err
+	}
+	return filterUserVisibleSubscriptionSummaries(summaries), nil
+}
+
 // HasActiveUserSubscription returns whether the user has any active subscription.
 // This is a lightweight existence check to avoid heavy pre-consume transactions.
 func HasActiveUserSubscription(userId int) (bool, error) {
@@ -887,6 +897,29 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 		return nil, err
 	}
 	return buildSubscriptionSummaries(subs), nil
+}
+
+// GetAllUserVisibleSubscriptions returns subscriptions that should be listed to users.
+func GetAllUserVisibleSubscriptions(userId int) ([]SubscriptionSummary, error) {
+	summaries, err := GetAllUserSubscriptions(userId)
+	if err != nil {
+		return nil, err
+	}
+	return filterUserVisibleSubscriptionSummaries(summaries), nil
+}
+
+func filterUserVisibleSubscriptionSummaries(summaries []SubscriptionSummary) []SubscriptionSummary {
+	if len(summaries) == 0 {
+		return []SubscriptionSummary{}
+	}
+	result := make([]SubscriptionSummary, 0, len(summaries))
+	for _, summary := range summaries {
+		if summary.Plan == nil || !summary.Plan.UserVisible {
+			continue
+		}
+		result = append(result, summary)
+	}
+	return result
 }
 
 // GetAllUserSubscriptionsByPlan returns all subscriptions for a plan with safe user metadata.

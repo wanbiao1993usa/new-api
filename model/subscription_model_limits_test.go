@@ -32,6 +32,7 @@ func insertSubscriptionLimitPlan(t *testing.T, id int, total int64, limits strin
 		DurationUnit:      SubscriptionDurationMonth,
 		DurationValue:     1,
 		Enabled:           true,
+		UserVisible:       true,
 		TotalAmount:       total,
 		ModelAmountLimits: limits,
 		QuotaResetPeriod:  resetPeriod,
@@ -70,6 +71,36 @@ func getSubscriptionModelLimitUsed(t *testing.T, subId int, modelName string) in
 	var usage UserSubscriptionModelUsage
 	require.NoError(t, DB.Where("user_subscription_id = ? AND model_name = ?", subId, modelName).First(&usage).Error)
 	return usage.AmountUsed
+}
+
+func TestGetAllUserVisibleSubscriptionsFiltersHiddenPlansOnlyForListing(t *testing.T) {
+	truncateTables(t)
+
+	insertSubscriptionLimitUser(t, 514)
+	visiblePlan := insertSubscriptionLimitPlan(t, 616, 1000, "", SubscriptionResetNever)
+	hiddenPlan := insertSubscriptionLimitPlan(t, 617, 1000, "", SubscriptionResetNever)
+	hiddenPlan.UserVisible = false
+	require.NoError(t, DB.Save(hiddenPlan).Error)
+	InvalidateSubscriptionPlanCache(hiddenPlan.Id)
+
+	insertActiveUserSubscriptionForLimitTest(t, 716, 514, visiblePlan.Id, 1000, 0)
+	insertActiveUserSubscriptionForLimitTest(t, 717, 514, hiddenPlan.Id, 1000, 0)
+
+	allVisible, err := GetAllUserVisibleSubscriptions(514)
+	require.NoError(t, err)
+	require.Len(t, allVisible, 1)
+	require.NotNil(t, allVisible[0].Plan)
+	assert.Equal(t, visiblePlan.Id, allVisible[0].Plan.Id)
+
+	activeVisible, err := GetAllActiveUserVisibleSubscriptions(514)
+	require.NoError(t, err)
+	require.Len(t, activeVisible, 1)
+	require.NotNil(t, activeVisible[0].Plan)
+	assert.Equal(t, visiblePlan.Id, activeVisible[0].Plan.Id)
+
+	hasActive, err := HasActiveUserSubscription(514)
+	require.NoError(t, err)
+	assert.True(t, hasActive)
 }
 
 func TestPreConsumeUserSubscription_ModelLimitRefundsBothCounters(t *testing.T) {

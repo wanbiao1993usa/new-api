@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"io"
 	"strconv"
 	"strings"
 
@@ -29,7 +30,7 @@ func GetSubscriptionPlans(c *gin.Context) {
 	userId := c.GetInt("id")
 	userGroup, _ := model.GetUserGroup(userId, false)
 	var plans []model.SubscriptionPlan
-	if err := model.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	if err := model.DB.Where("enabled = ? AND user_visible = ?", true, true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -137,14 +138,14 @@ func GetSubscriptionSelf(c *gin.Context) {
 		forcedBillingPreference = "wallet_only"
 	}
 
-	// Get all subscriptions (including expired)
-	allSubscriptions, err := model.GetAllUserSubscriptions(userId)
+	// Get user-visible subscriptions (including expired)
+	allSubscriptions, err := model.GetAllUserVisibleSubscriptions(userId)
 	if err != nil {
 		allSubscriptions = []model.SubscriptionSummary{}
 	}
 
-	// Get active subscriptions for backward compatibility
-	activeSubscriptions, err := model.GetAllActiveUserSubscriptions(userId)
+	// Get active user-visible subscriptions for backward compatibility
+	activeSubscriptions, err := model.GetAllActiveUserVisibleSubscriptions(userId)
 	if err != nil {
 		activeSubscriptions = []model.SubscriptionSummary{}
 	}
@@ -154,8 +155,8 @@ func GetSubscriptionSelf(c *gin.Context) {
 		"effective_group":              userGroup,
 		"effective_group_billing_type": groupBillingType,
 		"forced_billing_preference":    forcedBillingPreference,
-		"subscriptions":                activeSubscriptions, // all active subscriptions
-		"all_subscriptions":            allSubscriptions,    // all subscriptions including expired
+		"subscriptions":                activeSubscriptions, // active visible subscriptions
+		"all_subscriptions":            allSubscriptions,    // visible subscriptions including expired
 	})
 }
 
@@ -204,18 +205,49 @@ type AdminUpsertSubscriptionPlanRequest struct {
 	Plan model.SubscriptionPlan `json:"plan"`
 }
 
+type adminUpsertSubscriptionPlanProvidedFields struct {
+	Enabled     bool
+	UserVisible bool
+}
+
+func bindAdminUpsertSubscriptionPlanRequest(c *gin.Context, req *AdminUpsertSubscriptionPlanRequest) (adminUpsertSubscriptionPlanProvidedFields, error) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return adminUpsertSubscriptionPlanProvidedFields{}, err
+	}
+	if err := common.Unmarshal(body, req); err != nil {
+		return adminUpsertSubscriptionPlanProvidedFields{}, err
+	}
+	var raw map[string]map[string]interface{}
+	provided := adminUpsertSubscriptionPlanProvidedFields{}
+	if err := common.Unmarshal(body, &raw); err == nil {
+		if planRaw, ok := raw["plan"]; ok {
+			_, provided.Enabled = planRaw["enabled"]
+			_, provided.UserVisible = planRaw["user_visible"]
+		}
+	}
+	return provided, nil
+}
+
 type AdminPlanUserSubscriptionsResponse struct {
-	Records         []model.SubscriptionSummaryWithUser   `json:"records"`
+	Records         []model.SubscriptionSummaryWithUser        `json:"records"`
 	HistoricalUsage model.SubscriptionPlanHistoricalUsageStats `json:"historical_usage"`
 }
 
 func AdminCreateSubscriptionPlan(c *gin.Context) {
 	var req AdminUpsertSubscriptionPlanRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	provided, err := bindAdminUpsertSubscriptionPlanRequest(c, &req)
+	if err != nil {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
 	req.Plan.Id = 0
+	if !provided.Enabled {
+		req.Plan.Enabled = true
+	}
+	if !provided.UserVisible {
+		req.Plan.UserVisible = true
+	}
 	if strings.TrimSpace(req.Plan.Title) == "" {
 		common.ApiErrorMsg(c, "套餐标题不能为空")
 		return
@@ -262,11 +294,31 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
-	err := model.DB.Create(&req.Plan).Error
+	enabled := req.Plan.Enabled
+	userVisible := req.Plan.UserVisible
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&req.Plan).Error; err != nil {
+			return err
+		}
+		updateMap := map[string]interface{}{}
+		if provided.Enabled {
+			updateMap["enabled"] = enabled
+		}
+		if provided.UserVisible {
+			updateMap["user_visible"] = userVisible
+		}
+		if len(updateMap) == 0 {
+			return nil
+		}
+		updateMap["updated_at"] = common.GetTimestamp()
+		return tx.Model(&model.SubscriptionPlan{}).Where("id = ?", req.Plan.Id).Updates(updateMap).Error
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	req.Plan.Enabled = enabled
+	req.Plan.UserVisible = userVisible
 	model.InvalidateSubscriptionPlanCache(req.Plan.Id)
 	common.ApiSuccess(c, req.Plan)
 }
@@ -278,9 +330,23 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	var req AdminUpsertSubscriptionPlanRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	provided, err := bindAdminUpsertSubscriptionPlanRequest(c, &req)
+	if err != nil {
 		common.ApiErrorMsg(c, "参数错误")
 		return
+	}
+	var existingPlan model.SubscriptionPlan
+	if !provided.Enabled || !provided.UserVisible {
+		if err := model.DB.Where("id = ?", id).First(&existingPlan).Error; err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if !provided.Enabled {
+			req.Plan.Enabled = existingPlan.Enabled
+		}
+		if !provided.UserVisible {
+			req.Plan.UserVisible = existingPlan.UserVisible
+		}
 	}
 	if strings.TrimSpace(req.Plan.Title) == "" {
 		common.ApiErrorMsg(c, "套餐标题不能为空")
@@ -330,7 +396,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 
-	err := model.DB.Transaction(func(tx *gorm.DB) error {
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
 			"title":                      req.Plan.Title,
@@ -341,6 +407,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"duration_value":             req.Plan.DurationValue,
 			"custom_seconds":             req.Plan.CustomSeconds,
 			"enabled":                    req.Plan.Enabled,
+			"user_visible":               req.Plan.UserVisible,
 			"sort_order":                 req.Plan.SortOrder,
 			"stripe_price_id":            req.Plan.StripePriceId,
 			"creem_product_id":           req.Plan.CreemProductId,
@@ -366,7 +433,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 }
 
 type AdminUpdateSubscriptionPlanStatusRequest struct {
-	Enabled *bool `json:"enabled"`
+	Enabled     *bool `json:"enabled"`
+	UserVisible *bool `json:"user_visible"`
 }
 
 func AdminUpdateSubscriptionPlanStatus(c *gin.Context) {
@@ -376,11 +444,20 @@ func AdminUpdateSubscriptionPlanStatus(c *gin.Context) {
 		return
 	}
 	var req AdminUpdateSubscriptionPlanStatusRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Enabled == nil && req.UserVisible == nil) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Update("enabled", *req.Enabled).Error; err != nil {
+	updateMap := map[string]interface{}{
+		"updated_at": common.GetTimestamp(),
+	}
+	if req.Enabled != nil {
+		updateMap["enabled"] = *req.Enabled
+	}
+	if req.UserVisible != nil {
+		updateMap["user_visible"] = *req.UserVisible
+	}
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}

@@ -1,0 +1,189 @@
+package controller
+
+import (
+	"net/http"
+	"testing"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/gin-gonic/gin"
+)
+
+func setupSubscriptionControllerTestDB(t *testing.T) {
+	t.Helper()
+
+	db := openTokenControllerTestDB(t)
+	if err := db.AutoMigrate(&model.User{}, &model.SubscriptionPlan{}); err != nil {
+		t.Fatalf("failed to migrate subscription plan table: %v", err)
+	}
+}
+
+func seedSubscriptionControllerUser(t *testing.T, id int) {
+	t.Helper()
+
+	user := &model.User{
+		Id:       id,
+		Username: "subscription-controller-user",
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "subscription-controller-user",
+	}
+	if err := model.DB.Create(user).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+}
+
+func seedSubscriptionControllerPlan(t *testing.T, id int, title string, enabled bool, userVisible bool) {
+	t.Helper()
+
+	plan := &model.SubscriptionPlan{
+		Id:            id,
+		Title:         title,
+		PriceAmount:   1,
+		Currency:      "USD",
+		DurationUnit:  model.SubscriptionDurationMonth,
+		DurationValue: 1,
+		Enabled:       enabled,
+		UserVisible:   userVisible,
+		TotalAmount:   1000,
+	}
+	if err := model.DB.Create(plan).Error; err != nil {
+		t.Fatalf("failed to seed subscription plan: %v", err)
+	}
+	if err := model.DB.Model(&model.SubscriptionPlan{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{"enabled": enabled, "user_visible": userVisible}).Error; err != nil {
+		t.Fatalf("failed to set subscription plan booleans: %v", err)
+	}
+	model.InvalidateSubscriptionPlanCache(id)
+}
+
+func TestAdminCreateSubscriptionPlanPreservesExplicitFalseBooleans(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/subscription/admin/plans", map[string]any{
+		"plan": map[string]any{
+			"title":          "hidden disabled plan",
+			"price_amount":   1,
+			"currency":       "USD",
+			"duration_unit":  model.SubscriptionDurationMonth,
+			"duration_value": 1,
+			"enabled":        false,
+			"user_visible":   false,
+			"total_amount":   1000,
+		},
+	}, 1)
+
+	AdminCreateSubscriptionPlan(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected create success, got message: %s", response.Message)
+	}
+	var created model.SubscriptionPlan
+	if err := common.Unmarshal(response.Data, &created); err != nil {
+		t.Fatalf("failed to decode created plan: %v", err)
+	}
+
+	var stored model.SubscriptionPlan
+	if err := model.DB.Where("id = ?", created.Id).First(&stored).Error; err != nil {
+		t.Fatalf("failed to load created plan: %v", err)
+	}
+	if stored.Enabled {
+		t.Fatalf("expected enabled=false to persist")
+	}
+	if stored.UserVisible {
+		t.Fatalf("expected user_visible=false to persist")
+	}
+}
+
+func TestAdminCreateSubscriptionPlanDefaultsBooleansToTrueWhenOmitted(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/subscription/admin/plans", map[string]any{
+		"plan": map[string]any{
+			"title":          "default visible enabled plan",
+			"price_amount":   1,
+			"currency":       "USD",
+			"duration_unit":  model.SubscriptionDurationMonth,
+			"duration_value": 1,
+			"total_amount":   1000,
+		},
+	}, 1)
+
+	AdminCreateSubscriptionPlan(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected create success, got message: %s", response.Message)
+	}
+	var created model.SubscriptionPlan
+	if err := common.Unmarshal(response.Data, &created); err != nil {
+		t.Fatalf("failed to decode created plan: %v", err)
+	}
+
+	var stored model.SubscriptionPlan
+	if err := model.DB.Where("id = ?", created.Id).First(&stored).Error; err != nil {
+		t.Fatalf("failed to load created plan: %v", err)
+	}
+	if !stored.Enabled {
+		t.Fatalf("expected omitted enabled to default true")
+	}
+	if !stored.UserVisible {
+		t.Fatalf("expected omitted user_visible to default true")
+	}
+}
+
+func TestGetSubscriptionPlansReturnsOnlyEnabledUserVisiblePlans(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	seedSubscriptionControllerUser(t, 1)
+	seedSubscriptionControllerPlan(t, 101, "visible plan", true, true)
+	seedSubscriptionControllerPlan(t, 102, "hidden plan", true, false)
+	seedSubscriptionControllerPlan(t, 103, "disabled plan", false, true)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/subscription/plans", nil, 1)
+
+	GetSubscriptionPlans(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected list success, got message: %s", response.Message)
+	}
+	var plans []SubscriptionPlanDTO
+	if err := common.Unmarshal(response.Data, &plans); err != nil {
+		t.Fatalf("failed to decode subscription plans: %v", err)
+	}
+	if len(plans) != 1 {
+		t.Fatalf("expected 1 visible plan, got %d", len(plans))
+	}
+	if plans[0].Plan.Id != 101 {
+		t.Fatalf("expected visible plan id 101, got %d", plans[0].Plan.Id)
+	}
+}
+
+func TestAdminUpdateSubscriptionPlanStatusCanToggleUserVisible(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	seedSubscriptionControllerPlan(t, 201, "toggle plan", true, true)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPatch, "/api/subscription/admin/plans/201", map[string]any{
+		"user_visible": false,
+	}, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: "201"}}
+
+	AdminUpdateSubscriptionPlanStatus(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected status update success, got message: %s", response.Message)
+	}
+	var stored model.SubscriptionPlan
+	if err := model.DB.Where("id = ?", 201).First(&stored).Error; err != nil {
+		t.Fatalf("failed to load updated plan: %v", err)
+	}
+	if !stored.Enabled {
+		t.Fatalf("expected enabled to stay true")
+	}
+	if stored.UserVisible {
+		t.Fatalf("expected user_visible=false after patch")
+	}
+}
