@@ -43,7 +43,7 @@ var (
 )
 
 const (
-	subscriptionPlanCacheNamespace     = "new-api:subscription_plan:v1"
+	subscriptionPlanCacheNamespace     = "new-api:subscription_plan:v2"
 	subscriptionPlanInfoCacheNamespace = "new-api:subscription_plan_info:v1"
 )
 
