@@ -6,8 +6,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -69,6 +71,38 @@ func TestShouldRetryTaskUpstreamInsufficientBalance(t *testing.T) {
 
 	require.True(t, isTaskUpstreamInsufficientBalanceError(taskErr))
 	require.True(t, shouldRetryTaskRelay(ctx, 1, taskErr, 1))
+}
+
+func TestNormalizeTaskUpstreamInsufficientBalancePreservesAutoDisableSignal(t *testing.T) {
+	oldAutomaticDisableChannelEnabled := common.AutomaticDisableChannelEnabled
+	oldAutomaticDisableKeywords := append([]string{}, operation_setting.AutomaticDisableKeywords...)
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = oldAutomaticDisableChannelEnabled
+		operation_setting.AutomaticDisableKeywords = oldAutomaticDisableKeywords
+	})
+	common.AutomaticDisableChannelEnabled = true
+	operation_setting.AutomaticDisableKeywords = []string{"Your credit balance is too low"}
+
+	upstreamMessage := "Your credit balance is too low"
+	taskErr := &dto.TaskError{
+		Code:       "fail_to_fetch_task",
+		Message:    upstreamMessage,
+		StatusCode: http.StatusForbidden,
+		Error:      errors.New(upstreamMessage),
+	}
+
+	autoDisableMessage := normalizeTaskUpstreamInsufficientBalanceError(taskErr)
+	require.Equal(t, upstreamMessage, autoDisableMessage)
+	require.Equal(t, string(types.ErrorCodeUpstreamInsufficientBalance), taskErr.Code)
+	require.Equal(t, types.UpstreamInsufficientBalanceMessage, taskErr.Message)
+	require.NotContains(t, taskErr.Error.Error(), "credit balance")
+
+	err := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
+	err = types.NormalizeUpstreamInsufficientBalanceError(err)
+	err.SetAutoDisableMessage(autoDisableMessage)
+
+	require.True(t, service.ShouldDisableChannel(err))
+	require.NotContains(t, err.Error(), "credit balance")
 }
 
 func TestShouldNotRetryUpstreamInsufficientBalanceOnSpecificChannel(t *testing.T) {

@@ -572,16 +572,15 @@ func RelayTask(c *gin.Context) {
 			break
 		}
 
-		if isTaskUpstreamInsufficientBalanceError(taskErr) {
-			taskErr.Code = string(types.ErrorCodeUpstreamInsufficientBalance)
-			taskErr.Message = types.UpstreamInsufficientBalanceMessage
-			taskErr.Error = errors.New(types.UpstreamInsufficientBalanceMessage)
+		upstreamBalanceAutoDisableMessage := normalizeTaskUpstreamInsufficientBalanceError(taskErr)
+		if upstreamBalanceAutoDisableMessage != "" {
 			retryParam.ExcludeChannelIds = append(retryParam.ExcludeChannelIds, channel.Id)
 		}
 
 		if !taskErr.LocalError {
 			newAPIError := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
 			newAPIError = types.NormalizeUpstreamInsufficientBalanceError(newAPIError)
+			newAPIError.SetAutoDisableMessage(upstreamBalanceAutoDisableMessage)
 			processChannelError(c,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
@@ -684,6 +683,20 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 		return false
 	}
 	return true
+}
+
+func normalizeTaskUpstreamInsufficientBalanceError(taskErr *dto.TaskError) string {
+	if !isTaskUpstreamInsufficientBalanceError(taskErr) {
+		return ""
+	}
+	autoDisableMessage := taskErr.Message
+	if taskErr.Error != nil && taskErr.Error.Error() != "" {
+		autoDisableMessage = taskErr.Error.Error()
+	}
+	taskErr.Code = string(types.ErrorCodeUpstreamInsufficientBalance)
+	taskErr.Message = types.UpstreamInsufficientBalanceMessage
+	taskErr.Error = errors.New(types.UpstreamInsufficientBalanceMessage)
+	return autoDisableMessage
 }
 
 func isTaskUpstreamInsufficientBalanceError(taskErr *dto.TaskError) bool {
