@@ -53,6 +53,19 @@ web/           — React frontend
 
 ## Rules
 
+## Review guidelines
+
+When reviewing pull requests, focus comments on serious issues that could affect correctness, security, billing accuracy, data integrity, or production operations.
+
+- Verify changes preserve compatibility with SQLite, MySQL, and PostgreSQL.
+- Check billing, quota, retry, fallback, and channel-selection changes for incorrect charge calculations, skipped retries, duplicate retries, or masked auto-disable signals.
+- Confirm JSON marshal/unmarshal logic uses the wrappers in `common/json.go` instead of direct `encoding/json` calls in business code.
+- For API request DTO changes, make sure optional scalar fields preserve explicit zero and false values when relayed upstream.
+- For frontend changes, verify new user-facing text is routed through i18n locale files and does not break existing Semi UI patterns.
+- For authentication, API key, OAuth, admin, and permission changes, look for privilege escalation, missing authorization checks, and sensitive data exposure.
+- For migrations and settings changes, check upgrade safety across existing installations and avoid requiring destructive manual database operations.
+- Keep review comments actionable and tied to concrete changed code paths or reachable runtime behavior.
+
 ### Rule 1: JSON Package — Use `common/json.go`
 
 All JSON marshal/unmarshal operations MUST use the wrapper functions in `common/json.go`:
