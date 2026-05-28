@@ -95,6 +95,11 @@ func TestGetChannelExcludesFailedChannelBeforePrioritySelection(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	require.Equal(t, middlePriorityChannel.Id, channel.Id)
+
+	channel, err = GetChannel("default", "gpt-5.5", 2, highPriorityChannel.Id)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	require.Equal(t, lowPriorityChannel.Id, channel.Id)
 }
 
 func TestGetChannelCompactFallbackExcludesFailedChannelBeforePrioritySelection(t *testing.T) {
@@ -117,6 +122,11 @@ func TestGetChannelCompactFallbackExcludesFailedChannelBeforePrioritySelection(t
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	require.Equal(t, middlePriorityChannel.Id, channel.Id)
+
+	channel, err = GetChannel("default", ratio_setting.WithCompactModelSuffix("gpt-5.5"), 2, highPriorityChannel.Id)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	require.Equal(t, lowPriorityChannel.Id, channel.Id)
 }
 
 func TestGetRandomSatisfiedChannelCacheExcludesFailedChannelBeforePrioritySelection(t *testing.T) {
@@ -150,6 +160,11 @@ func TestGetRandomSatisfiedChannelCacheExcludesFailedChannelBeforePrioritySelect
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	require.Equal(t, middlePriorityChannel.Id, channel.Id)
+
+	channel, err = GetRandomSatisfiedChannel("default", "gpt-5.5", 2, highPriorityChannel.Id)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	require.Equal(t, lowPriorityChannel.Id, channel.Id)
 }
 
 func TestIsChannelEnabledForGroupModelDBAllowsCompactAliasFromBaseModel(t *testing.T) {

@@ -140,7 +140,11 @@ func getPriority(group string, model string, retry int, excludeChannelIds ...int
 	// 确定要使用的优先级
 	var priorityToUse int
 	if len(excludeChannelIds) > 0 {
-		retry = 0
+		excludedCount, err := countExcludedAbilityChannels(group, model, excludeChannelIds...)
+		if err != nil {
+			return 0, err
+		}
+		retry = normalizeRetryAfterExclusions(retry, excludedCount)
 	}
 	if retry >= len(priorities) {
 		// 如果重试次数大于优先级数，则使用最小的优先级
@@ -159,9 +163,6 @@ func getChannelQuery(group string, model string, retry int, excludeChannelIds ..
 	channelQuery := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery)
 	if len(excludeChannelIds) > 0 {
 		channelQuery = channelQuery.Where("channel_id NOT IN ?", excludeChannelIds)
-	}
-	if len(excludeChannelIds) > 0 {
-		retry = 0
 	}
 	if retry != 0 {
 		priority, err := getPriority(group, model, retry, excludeChannelIds...)
@@ -189,10 +190,6 @@ func getResponsesCompactFallbackAbilities(group string, model string, retry int,
 
 	var abilities []Ability
 	query := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, baseModel, true)
-	if len(excludeChannelIds) > 0 {
-		query = query.Where("channel_id NOT IN ?", excludeChannelIds)
-		retry = 0
-	}
 	err := query.Find(&abilities).Error
 	if err != nil || len(abilities) == 0 {
 		return nil, err
@@ -221,8 +218,17 @@ func getResponsesCompactFallbackAbilities(group string, model string, retry int,
 
 	priorities := make(map[int]struct{})
 	filtered := make([]Ability, 0, len(abilities))
+	excludedCount := 0
+	excludedChannelMap := make(map[int]struct{}, len(excludeChannelIds))
+	for _, channelId := range excludeChannelIds {
+		excludedChannelMap[channelId] = struct{}{}
+	}
 	for _, ability := range abilities {
 		if _, ok := supportedChannels[ability.ChannelId]; !ok {
+			continue
+		}
+		if _, ok := excludedChannelMap[ability.ChannelId]; ok {
+			excludedCount++
 			continue
 		}
 		filtered = append(filtered, ability)
@@ -241,6 +247,7 @@ func getResponsesCompactFallbackAbilities(group string, model string, retry int,
 		sortedPriorities = append(sortedPriorities, priority)
 	}
 	sort.Sort(sort.Reverse(sort.IntSlice(sortedPriorities)))
+	retry = normalizeRetryAfterExclusions(retry, excludedCount)
 	if retry >= len(sortedPriorities) {
 		retry = len(sortedPriorities) - 1
 	}
@@ -257,6 +264,32 @@ func getResponsesCompactFallbackAbilities(group string, model string, retry int,
 		}
 	}
 	return targetAbilities, nil
+}
+
+func countExcludedAbilityChannels(group string, model string, excludeChannelIds ...int) (int, error) {
+	if len(excludeChannelIds) == 0 {
+		return 0, nil
+	}
+	var count int64
+	err := DB.Model(&Ability{}).
+		Where(commonGroupCol+" = ? and model = ? and enabled = ? and channel_id IN ?", group, model, true, excludeChannelIds).
+		Distinct("channel_id").
+		Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
+func normalizeRetryAfterExclusions(retry int, excludedCount int) int {
+	if excludedCount <= 0 {
+		return retry
+	}
+	retry -= excludedCount
+	if retry < 0 {
+		return 0
+	}
+	return retry
 }
 
 func GetChannel(group string, model string, retry int, excludeChannelIds ...int) (*Channel, error) {

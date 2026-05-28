@@ -121,13 +121,16 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, excludeCha
 
 	if len(excluded) > 0 {
 		filteredChannels := make([]int, 0, len(channels))
+		excludedCount := 0
 		for _, channelId := range channels {
-			if _, ok := excluded[channelId]; !ok {
-				filteredChannels = append(filteredChannels, channelId)
+			if _, ok := excluded[channelId]; ok {
+				excludedCount++
+				continue
 			}
+			filteredChannels = append(filteredChannels, channelId)
 		}
 		channels = filteredChannels
-		retry = 0
+		retry = normalizeRetryAfterExclusions(retry, excludedCount)
 		if len(channels) == 0 {
 			return nil, nil
 		}

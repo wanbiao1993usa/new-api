@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/stretchr/testify/require"
 )
@@ -74,6 +75,27 @@ func TestRelayErrorHandlerNormalizesUpstreamInsufficientBalance(t *testing.T) {
 	require.NotNil(t, err)
 	require.Equal(t, types.ErrorCodeUpstreamInsufficientBalance, err.GetErrorCode())
 	require.Equal(t, types.UpstreamInsufficientBalanceMessage, err.Error())
+	require.NotContains(t, err.Error(), "credit balance")
+}
+
+func TestRelayErrorHandlerPreservesAutoDisableSignalAfterBalanceMasking(t *testing.T) {
+	oldAutomaticDisableChannelEnabled := common.AutomaticDisableChannelEnabled
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = oldAutomaticDisableChannelEnabled
+	})
+	common.AutomaticDisableChannelEnabled = true
+
+	resp := &http.Response{
+		StatusCode: http.StatusForbidden,
+		Body:       io.NopCloser(strings.NewReader("Your credit balance is too low")),
+	}
+
+	err := RelayErrorHandler(context.Background(), resp, true)
+
+	require.NotNil(t, err)
+	require.Equal(t, types.ErrorCodeUpstreamInsufficientBalance, err.GetErrorCode())
+	require.Equal(t, types.UpstreamInsufficientBalanceMessage, err.Error())
+	require.True(t, ShouldDisableChannel(err))
 	require.NotContains(t, err.Error(), "credit balance")
 }
 

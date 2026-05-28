@@ -102,6 +102,7 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	err = common.Unmarshal(responseBody, &errResponse)
 	if err != nil {
 		if types.IsUpstreamInsufficientBalanceMessage(resp.StatusCode, string(responseBody)) {
+			newApiErr.SetAutoDisableMessage(string(responseBody))
 			newApiErr.SetLocalMessage(types.UpstreamInsufficientBalanceMessage, types.ErrorCodeUpstreamInsufficientBalance)
 			return
 		}

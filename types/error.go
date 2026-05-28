@@ -99,6 +99,7 @@ type NewAPIError struct {
 	errorCode      ErrorCode
 	StatusCode     int
 	Metadata       json.RawMessage
+	autoDisableMsg string
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.
@@ -197,6 +198,23 @@ func (e *NewAPIError) SetLocalMessage(message string, errorCode ErrorCode) {
 		relayError.Type = string(errorCode)
 		e.RelayError = relayError
 	}
+}
+
+func (e *NewAPIError) SetAutoDisableMessage(message string) {
+	if e == nil || message == "" {
+		return
+	}
+	e.autoDisableMsg = message
+}
+
+func (e *NewAPIError) GetAutoDisableMessage() string {
+	if e == nil {
+		return ""
+	}
+	if e.autoDisableMsg != "" {
+		return e.autoDisableMsg
+	}
+	return e.Error()
 }
 
 func (e *NewAPIError) ToOpenAIError() OpenAIError {
@@ -408,6 +426,7 @@ func NormalizeUpstreamInsufficientBalanceError(err *NewAPIError) *NewAPIError {
 		return err
 	}
 	if IsUpstreamInsufficientBalanceMessage(err.StatusCode, err.Error()) {
+		err.SetAutoDisableMessage(err.Error())
 		err.SetLocalMessage(UpstreamInsufficientBalanceMessage, ErrorCodeUpstreamInsufficientBalance)
 	}
 	return err
