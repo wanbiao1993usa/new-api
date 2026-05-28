@@ -148,6 +148,7 @@ const AddEditSubscriptionModal = ({
     quota_reset_period: 'never',
     quota_reset_custom_seconds: 0,
     enabled: true,
+    user_visible: true,
     sort_order: 0,
     max_purchase_per_user: 0,
     total_amount: 0,
@@ -173,6 +174,7 @@ const AddEditSubscriptionModal = ({
       quota_reset_period: p.quota_reset_period || 'never',
       quota_reset_custom_seconds: Number(p.quota_reset_custom_seconds || 0),
       enabled: p.enabled !== false,
+      user_visible: p.user_visible !== false,
       sort_order: Number(p.sort_order || 0),
       max_purchase_per_user: Number(p.max_purchase_per_user || 0),
       total_amount: Number(
@@ -298,6 +300,8 @@ const AddEditSubscriptionModal = ({
             values.quota_reset_period === 'custom'
               ? Number(values.quota_reset_custom_seconds || 0)
               : 0,
+          enabled: values.enabled !== false,
+          user_visible: values.user_visible !== false,
           sort_order: Number(values.sort_order || 0),
           max_purchase_per_user: Number(values.max_purchase_per_user || 0),
           total_amount: displayAmountToQuota(values.total_amount),
@@ -515,6 +519,15 @@ const AddEditSubscriptionModal = ({
                         field='enabled'
                         label={t('启用状态')}
                         size='large'
+                      />
+                    </Col>
+
+                    <Col span={12}>
+                      <Form.Switch
+                        field='user_visible'
+                        label={t('用户可见')}
+                        size='large'
+                        extraText={t('仅控制用户端是否展示，不影响订阅可用性')}
                       />
                     </Col>
                   </Row>

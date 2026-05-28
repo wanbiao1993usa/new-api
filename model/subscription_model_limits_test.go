@@ -32,6 +32,7 @@ func insertSubscriptionLimitPlan(t *testing.T, id int, total int64, limits strin
 		DurationUnit:      SubscriptionDurationMonth,
 		DurationValue:     1,
 		Enabled:           true,
+		UserVisible:       true,
 		TotalAmount:       total,
 		ModelAmountLimits: limits,
 		QuotaResetPeriod:  resetPeriod,
@@ -70,6 +71,38 @@ func getSubscriptionModelLimitUsed(t *testing.T, subId int, modelName string) in
 	var usage UserSubscriptionModelUsage
 	require.NoError(t, DB.Where("user_subscription_id = ? AND model_name = ?", subId, modelName).First(&usage).Error)
 	return usage.AmountUsed
+}
+
+func TestGetAllUserSubscriptionsIncludesHiddenPlansForSelfState(t *testing.T) {
+	truncateTables(t)
+
+	insertSubscriptionLimitUser(t, 514)
+	visiblePlan := insertSubscriptionLimitPlan(t, 616, 1000, "", SubscriptionResetNever)
+	hiddenPlan := insertSubscriptionLimitPlan(t, 617, 1000, "", SubscriptionResetNever)
+	hiddenPlan.UserVisible = false
+	require.NoError(t, DB.Save(hiddenPlan).Error)
+	InvalidateSubscriptionPlanCache(hiddenPlan.Id)
+
+	insertActiveUserSubscriptionForLimitTest(t, 716, 514, visiblePlan.Id, 1000, 0)
+	insertActiveUserSubscriptionForLimitTest(t, 717, 514, hiddenPlan.Id, 1000, 0)
+
+	allSubscriptions, err := GetAllUserSubscriptions(514)
+	require.NoError(t, err)
+	require.Len(t, allSubscriptions, 2)
+	require.NotNil(t, allSubscriptions[0].Plan)
+	require.NotNil(t, allSubscriptions[1].Plan)
+	assert.ElementsMatch(t, []int{visiblePlan.Id, hiddenPlan.Id}, []int{allSubscriptions[0].Plan.Id, allSubscriptions[1].Plan.Id})
+
+	activeSubscriptions, err := GetAllActiveUserSubscriptions(514)
+	require.NoError(t, err)
+	require.Len(t, activeSubscriptions, 2)
+	require.NotNil(t, activeSubscriptions[0].Plan)
+	require.NotNil(t, activeSubscriptions[1].Plan)
+	assert.ElementsMatch(t, []int{visiblePlan.Id, hiddenPlan.Id}, []int{activeSubscriptions[0].Plan.Id, activeSubscriptions[1].Plan.Id})
+
+	hasActive, err := HasActiveUserSubscription(514)
+	require.NoError(t, err)
+	assert.True(t, hasActive)
 }
 
 func TestPreConsumeUserSubscription_ModelLimitRefundsBothCounters(t *testing.T) {

@@ -42,8 +42,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if !plan.Enabled {
-		common.ApiErrorMsg(c, "套餐未启用")
+	if !ensureSubscriptionPlanPurchasable(c, plan) {
 		return
 	}
 	if plan.CreemProductId == "" {
