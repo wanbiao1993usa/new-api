@@ -64,6 +64,7 @@ When reviewing pull requests, focus comments on serious issues that could affect
 - For frontend changes, verify new user-facing text is routed through i18n locale files and does not break existing Semi UI patterns.
 - For authentication, API key, OAuth, admin, and permission changes, look for privilege escalation, missing authorization checks, and sensitive data exposure.
 - For migrations and settings changes, check upgrade safety across existing installations and avoid requiring destructive manual database operations.
+- Keep review comments actionable and tied to concrete changed code paths or reachable runtime behavior.
 
 ### Rule 1: JSON Package — Use `common/json.go`
 
