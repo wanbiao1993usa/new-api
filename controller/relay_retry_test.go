@@ -150,6 +150,24 @@ func TestTaskUpstreamInsufficientBalanceExcludesUnlockedChannelForFallback(t *te
 	require.Equal(t, types.UpstreamInsufficientBalanceMessage, taskErr.Message)
 }
 
+func TestBuildTaskChannelErrorPreservesUpstreamBalanceCodeAfterMasking(t *testing.T) {
+	upstreamMessage := "Your credit balance is too low"
+	taskErr := &dto.TaskError{
+		Code:       "fail_to_fetch_task",
+		Message:    upstreamMessage,
+		StatusCode: http.StatusForbidden,
+		Error:      errors.New(upstreamMessage),
+	}
+	autoDisableMessage := normalizeTaskUpstreamInsufficientBalanceError(taskErr)
+
+	newAPIError := buildTaskChannelError(taskErr, autoDisableMessage)
+
+	require.Equal(t, types.ErrorCodeUpstreamInsufficientBalance, newAPIError.GetErrorCode())
+	require.Equal(t, types.UpstreamInsufficientBalanceMessage, newAPIError.Error())
+	require.Equal(t, upstreamMessage, newAPIError.GetAutoDisableMessage())
+	require.NotContains(t, newAPIError.Error(), "credit balance")
+}
+
 func TestShouldNotRetryUpstreamInsufficientBalanceOnSpecificChannel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
