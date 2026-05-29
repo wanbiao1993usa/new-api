@@ -88,7 +88,10 @@ const (
 	ErrorCodeUpstreamInsufficientBalance ErrorCode = "upstream_insufficient_balance"
 )
 
-const UpstreamInsufficientBalanceMessage = "上游渠道余额不足"
+const (
+	UpstreamInsufficientBalanceMessage         = "请求过于频繁，请稍后重试。"
+	UpstreamInsufficientBalanceInternalMessage = "上游渠道余额不足"
+)
 
 type NewAPIError struct {
 	Err            error
