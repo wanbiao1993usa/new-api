@@ -117,9 +117,14 @@ const Navigation = ({
               <Image
                 src={afterSalesQRCode}
                 alt={t('微信群二维码')}
-                width={240}
-                height={240}
+                width={320}
                 className='max-w-full'
+                imgStyle={{
+                  maxWidth: '100%',
+                  maxHeight: '60vh',
+                  height: 'auto',
+                  objectFit: 'contain',
+                }}
               />
               <Text type='secondary'>{t('微信扫码加入售后群')}</Text>
             </>

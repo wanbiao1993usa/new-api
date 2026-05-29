@@ -105,8 +105,7 @@ const RechargeCard = ({
   const initialTabSetRef = useRef(false);
   const showAmountSkeleton = useMinimumLoadingTime(amountLoading);
   const [activeTab, setActiveTab] = useState('topup');
-  const shouldShowSubscription =
-    !subscriptionLoading && subscriptionPlans.length > 0;
+  const shouldShowSubscriptionTab = !subscriptionLoading;
   const regularPayMethods = payMethods || [];
 
   useEffect(() => {
@@ -115,18 +114,18 @@ const RechargeCard = ({
     setActiveTab(
       initialTab === 'topup'
         ? 'topup'
-        : shouldShowSubscription
+        : shouldShowSubscriptionTab
           ? 'subscription'
           : 'topup',
     );
     initialTabSetRef.current = true;
-  }, [shouldShowSubscription, subscriptionLoading, initialTab]);
+  }, [shouldShowSubscriptionTab, subscriptionLoading, initialTab]);
 
   useEffect(() => {
-    if (!shouldShowSubscription && activeTab !== 'topup') {
+    if (!shouldShowSubscriptionTab && activeTab !== 'topup') {
       setActiveTab('topup');
     }
-  }, [shouldShowSubscription, activeTab]);
+  }, [shouldShowSubscriptionTab, activeTab]);
   const topupContent = (
     <Space vertical style={{ width: '100%' }}>
       {/* 统计数据 */}
@@ -693,7 +692,7 @@ const RechargeCard = ({
         </Button>
       </div>
 
-      {shouldShowSubscription ? (
+      {shouldShowSubscriptionTab ? (
         <Tabs type='card' activeKey={activeTab} onChange={setActiveTab}>
           <TabPane
             tab={
