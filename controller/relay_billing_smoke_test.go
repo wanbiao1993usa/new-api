@@ -145,7 +145,7 @@ func TestRelaySmokeUpstreamInsufficientBalanceFallsBackToNextChannel(t *testing.
 	var errLog model.Log
 	require.NoError(t, env.db.Where("user_id = ? AND type = ?", user.Id, model.LogTypeError).Order("id desc").First(&errLog).Error)
 	require.Equal(t, failingChannel.Id, errLog.ChannelId)
-	require.Contains(t, errLog.Content, types.UpstreamInsufficientBalanceMessage)
+	require.Contains(t, errLog.Content, types.UpstreamInsufficientBalanceInternalMessage)
 	require.NotContains(t, errLog.Content, "AiMaMi")
 	require.NotContains(t, errLog.Content, "insufficient balance")
 	require.NotContains(t, errLog.Content, "127.0.0.1")

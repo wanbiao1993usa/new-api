@@ -8,6 +8,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -103,6 +105,67 @@ func TestNormalizeTaskUpstreamInsufficientBalancePreservesAutoDisableSignal(t *t
 
 	require.True(t, service.ShouldDisableChannel(err))
 	require.NotContains(t, err.Error(), "credit balance")
+}
+
+func TestTaskUpstreamInsufficientBalanceKeepsLockedChannelBoundary(t *testing.T) {
+	upstreamMessage := "Your credit balance is too low"
+	taskErr := &dto.TaskError{
+		Code:       "fail_to_fetch_task",
+		Message:    upstreamMessage,
+		StatusCode: http.StatusForbidden,
+		Error:      errors.New(upstreamMessage),
+	}
+	lockedChannel := &model.Channel{Id: 17}
+	retryParam := &service.RetryParam{Retry: common.GetPointer(0)}
+	relayInfo := &relaycommon.RelayInfo{
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{LockedChannel: lockedChannel},
+	}
+
+	autoDisableMessage := handleTaskUpstreamInsufficientBalance(retryParam, relayInfo, lockedChannel, taskErr)
+
+	require.Equal(t, upstreamMessage, autoDisableMessage)
+	require.Empty(t, retryParam.ExcludeChannelIds)
+	require.Same(t, lockedChannel, relayInfo.LockedChannel)
+	require.Equal(t, string(types.ErrorCodeUpstreamInsufficientBalance), taskErr.Code)
+	require.Equal(t, types.UpstreamInsufficientBalanceMessage, taskErr.Message)
+}
+
+func TestTaskUpstreamInsufficientBalanceExcludesUnlockedChannelForFallback(t *testing.T) {
+	upstreamMessage := "Your credit balance is too low"
+	taskErr := &dto.TaskError{
+		Code:       "fail_to_fetch_task",
+		Message:    upstreamMessage,
+		StatusCode: http.StatusForbidden,
+		Error:      errors.New(upstreamMessage),
+	}
+	channel := &model.Channel{Id: 23}
+	retryParam := &service.RetryParam{Retry: common.GetPointer(0)}
+	relayInfo := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+
+	autoDisableMessage := handleTaskUpstreamInsufficientBalance(retryParam, relayInfo, channel, taskErr)
+
+	require.Equal(t, upstreamMessage, autoDisableMessage)
+	require.Equal(t, []int{channel.Id}, retryParam.ExcludeChannelIds)
+	require.Equal(t, string(types.ErrorCodeUpstreamInsufficientBalance), taskErr.Code)
+	require.Equal(t, types.UpstreamInsufficientBalanceMessage, taskErr.Message)
+}
+
+func TestBuildTaskChannelErrorPreservesUpstreamBalanceCodeAfterMasking(t *testing.T) {
+	upstreamMessage := "Your credit balance is too low"
+	taskErr := &dto.TaskError{
+		Code:       "fail_to_fetch_task",
+		Message:    upstreamMessage,
+		StatusCode: http.StatusForbidden,
+		Error:      errors.New(upstreamMessage),
+	}
+	autoDisableMessage := normalizeTaskUpstreamInsufficientBalanceError(taskErr)
+
+	newAPIError := buildTaskChannelError(taskErr, autoDisableMessage)
+
+	require.Equal(t, types.ErrorCodeUpstreamInsufficientBalance, newAPIError.GetErrorCode())
+	require.Equal(t, types.UpstreamInsufficientBalanceMessage, newAPIError.Error())
+	require.Equal(t, upstreamMessage, newAPIError.GetAutoDisableMessage())
+	require.NotContains(t, newAPIError.Error(), "credit balance")
 }
 
 func TestShouldNotRetryUpstreamInsufficientBalanceOnSpecificChannel(t *testing.T) {

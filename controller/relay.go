@@ -367,13 +367,17 @@ func isUpstreamInsufficientQuotaError(err *types.NewAPIError) bool {
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
-	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, err.Error()))
+	channelLogMessage := err.Error()
+	if types.IsUpstreamInsufficientBalanceError(err) {
+		channelLogMessage = types.UpstreamInsufficientBalanceInternalMessage
+	}
+	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, channelLogMessage))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
 	if service.ShouldDisableChannel(err) && channelError.AutoBan {
 		reason := err.ErrorWithStatusCode()
 		if types.IsUpstreamInsufficientBalanceError(err) {
-			reason = types.UpstreamInsufficientBalanceMessage
+			reason = types.UpstreamInsufficientBalanceInternalMessage
 		}
 		gopool.Go(func() {
 			service.DisableChannel(channelError, reason)
@@ -412,7 +416,14 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+		errorLogContent := err.MaskSensitiveErrorWithStatusCode()
+		if types.IsUpstreamInsufficientBalanceError(err) {
+			errorLogContent = types.UpstreamInsufficientBalanceInternalMessage
+			if err.StatusCode != 0 {
+				errorLogContent = fmt.Sprintf("status_code=%d, %s", err.StatusCode, errorLogContent)
+			}
+		}
+		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, errorLogContent, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
 
 }
@@ -572,15 +583,10 @@ func RelayTask(c *gin.Context) {
 			break
 		}
 
-		upstreamBalanceAutoDisableMessage := normalizeTaskUpstreamInsufficientBalanceError(taskErr)
-		if upstreamBalanceAutoDisableMessage != "" {
-			retryParam.ExcludeChannelIds = append(retryParam.ExcludeChannelIds, channel.Id)
-		}
+		upstreamBalanceAutoDisableMessage := handleTaskUpstreamInsufficientBalance(retryParam, relayInfo, channel, taskErr)
 
 		if !taskErr.LocalError {
-			newAPIError := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
-			newAPIError = types.NormalizeUpstreamInsufficientBalanceError(newAPIError)
-			newAPIError.SetAutoDisableMessage(upstreamBalanceAutoDisableMessage)
+			newAPIError := buildTaskChannelError(taskErr, upstreamBalanceAutoDisableMessage)
 			processChannelError(c,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
@@ -635,7 +641,7 @@ func RelayTask(c *gin.Context) {
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	if taskErr.StatusCode == http.StatusTooManyRequests {
-		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
+		taskErr.Message = "请求过于频繁，请稍后重试。"
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
 }
@@ -697,6 +703,29 @@ func normalizeTaskUpstreamInsufficientBalanceError(taskErr *dto.TaskError) strin
 	taskErr.Message = types.UpstreamInsufficientBalanceMessage
 	taskErr.Error = errors.New(types.UpstreamInsufficientBalanceMessage)
 	return autoDisableMessage
+}
+
+func handleTaskUpstreamInsufficientBalance(retryParam *service.RetryParam, relayInfo *relaycommon.RelayInfo, channel *model.Channel, taskErr *dto.TaskError) string {
+	autoDisableMessage := normalizeTaskUpstreamInsufficientBalanceError(taskErr)
+	if autoDisableMessage == "" {
+		return ""
+	}
+	if relayInfo.LockedChannel != nil {
+		return autoDisableMessage
+	}
+	retryParam.ExcludeChannelIds = append(retryParam.ExcludeChannelIds, channel.Id)
+	return autoDisableMessage
+}
+
+func buildTaskChannelError(taskErr *dto.TaskError, upstreamBalanceAutoDisableMessage string) *types.NewAPIError {
+	newAPIError := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
+	if upstreamBalanceAutoDisableMessage != "" {
+		newAPIError.SetLocalMessage(types.UpstreamInsufficientBalanceMessage, types.ErrorCodeUpstreamInsufficientBalance)
+	} else {
+		newAPIError = types.NormalizeUpstreamInsufficientBalanceError(newAPIError)
+	}
+	newAPIError.SetAutoDisableMessage(upstreamBalanceAutoDisableMessage)
+	return newAPIError
 }
 
 func isTaskUpstreamInsufficientBalanceError(taskErr *dto.TaskError) bool {
